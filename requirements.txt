@@ -1,0 +1,9 @@
+numba==0.61.2
+numpy==1.26.4
+pandas==2.1.4
+PyYAML==6.0.1
+scikit_learn==1.2.2
+nlopt==2.9.1
+sortedcontainers==2.4.0
+sympy==1.12
+tqdm==4.65.0

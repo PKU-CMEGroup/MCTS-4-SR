@@ -1,0 +1,16 @@
+start_case: 1
+run_num: 10
+output_dir: results
+model_params:
+  max_depth: 6
+  max_single_arity_ops: 999
+  max_constants: 999
+  K: 500
+  c: 4.0
+  gamma: 0.5
+  max_expressions: 500000
+  gp_rate: 0.2
+  mutation_rate: 0.1
+  exploration_rate: 0.2
+  ops: "+, -, *, /, sin, cos, exp, log, R"
+  verbose: False
