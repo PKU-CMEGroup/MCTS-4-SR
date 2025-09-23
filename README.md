@@ -92,4 +92,8 @@ The `--benchmark` option may be set to any of the following:
 
 Configuration files reside in the `configs/` directory. You may adjust algorithm parameters (e.g. exploration constant, mutation rate, UCB-extreme parameters) by editing the corresponding YAML file.
 
+## 5. Citation
+
+Zhengyao Huang, Daniel Zhengyu Huang, Tiannan Xiao, Dina Ma, Zhenyu Ming, Hao Shi, Yuanhui Wen. "[Improving Monte Carlo Tree Search for Symbolic Regression](https://arxiv.org/abs/2509.15929)."
+
 ---
