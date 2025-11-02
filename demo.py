@@ -1,5 +1,4 @@
 from iMCTS import Regressor
-from sympy import sympify, expand, expand_log
 import numpy as np
 
 X = np.random.uniform(0, 2, (1, 20))
