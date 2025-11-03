@@ -139,11 +139,17 @@ class Optimizer:
 
         # Compute reward safely.
         try:
-            reward = self.cal_reward(self.x_train, self.y_train, f_pred)
+            # 静默浮点运行时告警（overflow/divide/invalid/underflow），避免进入 Python warnings/异常慢路径
+            with np.errstate(over='ignore', divide='ignore', invalid='ignore', under='ignore'):
+                reward = self.cal_reward(self.x_train, self.y_train, f_pred)
+            # 将非有限值归零（若内部因数值问题产生 nan/inf，这里统一判 0）
+            reward = float(reward)
+            if not np.isfinite(reward):
+                reward = 0.0
         except ZeroDivisionError:
             reward = 0.0
         except Exception:
-            # Any other runtime failure yields zero reward instead of aborting search.
+            # 其他异常同样记 0 分，防止搜索中断
             reward = 0.0
         return expression, float(reward)
 
