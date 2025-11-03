@@ -26,12 +26,14 @@ Key features:
 
 ## 2. System Requirements
 
-- **Python** ≥ 3.11.5
+- **Python** ≥ 3.10
 
 To install all required dependencies, execute:
 
 ```bash
-pip install -r requirements.txt
+git clone https://github.com/PKU-CMEGroup/MCTS-4-SR
+cd MCTS-4-SR
+pip install -e .
 ```
 
 ---
@@ -52,6 +54,9 @@ pip install -r requirements.txt
 Refer to demo.py; you can run the algorithm as follows:
 
 ```python
+import numpy as np
+from iMCTS import Regressor
+
 var_num = 1
 X = np.random.uniform(0, 2, (var_num, 20))
 
