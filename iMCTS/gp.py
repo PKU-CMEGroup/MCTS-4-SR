@@ -121,13 +121,21 @@ class GPManager:
             return path
         
         index = random.randint(0, len(path)-1)  # Insert before the index
+
+        state = copy.deepcopy(old_state)
+        for op in path:
+            state.add_op(op)
+        if state.depth == state.max_depth:
+            return path
         
         # Calculate subtree size at this index
         subtree_size = self.cal_subtree_size_at_index(path, index)
         
         # Calculate available resources
-        available_arity = old_state.max_single_arity_ops - old_state.single_arity_op_count
-        available_constants = old_state.max_constants - old_state.constant_count
+        single_arity_count = sum(1 for op in path if self.arity_dict[op] == 1) + old_state.single_arity_op_count
+        constants_count = sum(1 for op in path if op in {'C', 'R'}) + old_state.constant_count
+        available_arity = old_state.max_single_arity_ops - single_arity_count
+        available_constants = old_state.max_constants - constants_count
         
         # Calculate accurate depth at this index
         current_depth = self.cal_depth_at_index(path, index)
@@ -336,42 +344,34 @@ class GPManager:
         return size
     
     def cal_depth_at_index(self, path: List[str], target_index: int) -> int:
-        """Calculate the depth of the node at target_index in the path."""
-        if target_index >= len(path) or target_index < 0:
+        """计算路径中 target_index 处节点的深度（根节点深度为 1）"""
+        if not (0 <= target_index < len(path)):
             return 0
-        
-        # Use a stack to track depth as we traverse the path
-        depth_stack = []
-        current_depth = 1  # Root starts at depth 1
+
+        # 栈中存储每个待处理子节点的深度
+        # 初始状态：我们需要在深度 1 处放置一个根节点
+        stack = [1]
         
         for i, op in enumerate(path):
+            if not stack:
+                break  # 理论上不应发生，除非 path 不是合法的树
+                
+            # 当前节点的深度就是栈顶弹出的深度
+            current_depth = stack.pop()
+            
+            # 如果达到了目标索引，直接返回深度
             if i == target_index:
                 return current_depth
             
             arity = self.arity_dict[op]
             
-            if arity == 0:
-                # Leaf node - pop from stack if we've completed a parent's children
-                while depth_stack and depth_stack[-1][1] == 0:
-                    depth_stack.pop()
-                    if depth_stack:
-                        depth_stack[-1] = (depth_stack[-1][0], depth_stack[-1][1] - 1)
-            else:
-                # Internal node - push to stack with remaining children count
-                depth_stack.append((current_depth, arity))
-                current_depth += 1
+            # 如果是内部节点，它会有 'arity' 个子节点
+            # 这些子节点都在当前深度的下一层，即 current_depth + 1
+            # 我们按照后进先出的顺序压栈（前序遍历通常先处理左子树）
+            for _ in range(arity):
+                stack.append(current_depth + 1)
                 
-            # Decrease children count for parent
-            if depth_stack and depth_stack[-1][1] > 0:
-                depth_stack[-1] = (depth_stack[-1][0], depth_stack[-1][1] - 1)
-                
-            # Update current depth for next node
-            if depth_stack:
-                current_depth = depth_stack[-1][0] + 1
-            else:
-                current_depth = 1
-        
-        return current_depth
+        return 0
     
     def mutate(self, state: 'ExpTree', path: List[str]) -> List[str]:
         """Mutate a path using a random mutation strategy."""
