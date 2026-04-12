@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
-# ---- 查找依赖 ----
+# ---- Dependencies ----
 find_package(OpenMP)
 
 option(IMCTS_USE_SYSTEM_EIGEN "Prefer a system-installed Eigen3 before fetching a local copy" ON)
@@ -36,10 +36,29 @@ option(IMCTS_BUILD_PYTHON "Build Python bindings" ON)
 if(IMCTS_BUILD_PYTHON)
     set(PYBIND11_FINDPYTHON ON)
     find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
-    find_package(pybind11 CONFIG REQUIRED)
+    option(IMCTS_USE_SYSTEM_PYBIND11 "Prefer a system-installed pybind11 before fetching a local copy" ON)
+    if(IMCTS_USE_SYSTEM_PYBIND11)
+        find_package(pybind11 CONFIG QUIET)
+    endif()
+    if(NOT pybind11_FOUND)
+        message(STATUS "pybind11 not found; fetching pybind11 2.13.6 for this build.")
+        FetchContent_Declare(
+            pybind11
+            URL https://github.com/pybind/pybind11/archive/refs/tags/v2.13.6.tar.gz
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        )
+        FetchContent_MakeAvailable(pybind11)
+    endif()
+    if(NOT TARGET pybind11::module)
+        message(FATAL_ERROR "pybind11 is required for IMCTS_BUILD_PYTHON, but neither a system package nor the bundled fetch path succeeded.")
+    endif()
 endif()
 
-# ---- 核心库 ----
+if(BUILD_TESTING)
+    include(CTest)
+endif()
+
+# ---- Core library ----
 add_library(imcts_core STATIC
     source/core/exp_tree.cpp
     source/core/exp_queue.cpp
@@ -61,7 +80,7 @@ if(OpenMP_CXX_FOUND)
     target_link_libraries(imcts_core PUBLIC OpenMP::OpenMP_CXX)
 endif()
 
-# ---- Python 模块（可选）----
+# ---- Python module (optional) ----
 if(IMCTS_BUILD_PYTHON)
     pybind11_add_module(imcts_py python/bindings.cpp)
     target_link_libraries(imcts_py PRIVATE imcts_core)
@@ -84,10 +103,19 @@ if(IMCTS_BUILD_PYTHON)
         imcts/benchmarks/basic.json
         DESTINATION imcts/benchmarks
     )
+
+    if(BUILD_TESTING)
+        add_test(
+            NAME python_smoke
+            COMMAND
+                ${Python_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/python/run_python_smoke.py
+                $<TARGET_FILE_DIR:imcts_py>
+        )
+    endif()
 endif()
 
-# ---- 测试 ----
+# ---- Tests ----
 if(BUILD_TESTING)
-  include(CTest)
-  add_subdirectory(test)
+    add_subdirectory(test)
 endif()

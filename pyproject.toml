@@ -13,14 +13,46 @@ version = "0.1.0"
 description = "MCTS-4-SR: symbolic regression with a C++ pybind11 backend"
 readme = "README.md"
 requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Zhengyao Huang" },
+]
+keywords = [
+    "symbolic-regression",
+    "monte-carlo-tree-search",
+    "mcts",
+    "machine-learning",
+    "pybind11",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "numpy",
     "sympy",
     "PyYAML",
 ]
 
+[project.urls]
+Homepage = "https://github.com/PKU-CMEGroup/MCTS-4-SR"
+Repository = "https://github.com/PKU-CMEGroup/MCTS-4-SR"
+Issues = "https://github.com/PKU-CMEGroup/MCTS-4-SR/issues"
+Paper = "https://arxiv.org/abs/2509.15929"
+
 [project.optional-dependencies]
 examples = ["pandas", "scikit-learn"]
+test = ["pytest>=7"]
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
@@ -31,9 +63,14 @@ wheel.packages = []
 [tool.scikit-build.sdist]
 include = [
     "CMakeLists.txt",
+    "LICENSE",
     "README.md",
     "include/**",
     "source/**",
     "python/**",
     "imcts/**",
+    "test/**",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["python"]

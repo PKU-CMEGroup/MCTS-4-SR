@@ -509,7 +509,9 @@ def run_case(group: str, case: dict, run_index: int, seed: int, settings: dict[s
     y_pred_test = eval_expression(materialized_expression, X_test)
     train_r2 = regression_r2(y_train, y_pred_train)
     test_r2 = regression_r2(y_test, y_pred_test)
-    simplified_expression, complexity = simplify_with_complexity(materialized_expression)
+
+    # Apply precision truncation logic to numeric properties globally via SymPy
+    simplified_expression, complexity = simplify_with_complexity(materialized_expression, precision=4, threshold=1e-4)
 
     return {
         "group": group,

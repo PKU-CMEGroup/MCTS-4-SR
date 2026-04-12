@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 
-def _simplify_sympy(expr: str, *, rationalize_constants: bool = False):
+def _simplify_sympy(expr: str, *, rationalize_constants: bool = False, precision: int = 4, threshold: float = 1e-4):
     if not expr:
         return None
 
@@ -29,7 +29,9 @@ def _simplify_sympy(expr: str, *, rationalize_constants: bool = False):
 
     try:
         parsed = parse_expr(expr, evaluate=True, local_dict=local_dict)
-        simplified = sp.simplify(parsed)
+        simplified = sp.expand(sp.simplify(parsed))
+        if precision is not None and precision > 0:
+            simplified = simplified.evalf(precision, chop=threshold)
         if rationalize_constants:
             simplified = sp.nsimplify(simplified)
         return simplified
@@ -37,40 +39,40 @@ def _simplify_sympy(expr: str, *, rationalize_constants: bool = False):
         return None
 
 
-def simplify_expression(expr: str, *, rationalize_constants: bool = False) -> str:
+def simplify_expression(expr: str, *, rationalize_constants: bool = False, precision: int = 4, threshold: float = 1e-4) -> str:
     """Return a prettier symbolic expression if SymPy is installed."""
     try:
         import sympy as sp
     except ImportError:
         return expr
 
-    simplified = _simplify_sympy(expr, rationalize_constants=rationalize_constants)
+    simplified = _simplify_sympy(expr, rationalize_constants=rationalize_constants, precision=precision, threshold=threshold)
     if simplified is None:
         return expr
     return sp.sstr(simplified)
 
 
-def expression_complexity(expr: str, *, rationalize_constants: bool = False) -> float:
+def expression_complexity(expr: str, *, rationalize_constants: bool = False, precision: int = 4, threshold: float = 1e-4) -> float:
     """Return the SymPy preorder-traversal node count for an expression."""
     try:
         import sympy as sp
     except ImportError:
         return float("nan")
 
-    simplified = _simplify_sympy(expr, rationalize_constants=rationalize_constants)
+    simplified = _simplify_sympy(expr, rationalize_constants=rationalize_constants, precision=precision, threshold=threshold)
     if simplified is None:
         return float("nan")
     return float(sum(1 for _ in sp.preorder_traversal(simplified)))
 
 
-def simplify_with_complexity(expr: str, *, rationalize_constants: bool = False) -> tuple[str, float]:
+def simplify_with_complexity(expr: str, *, rationalize_constants: bool = False, precision: int = 4, threshold: float = 1e-4) -> tuple[str, float]:
     """Return `(simplified_expression, complexity)` using a shared SymPy pipeline."""
     try:
         import sympy as sp
     except ImportError:
         return expr, float("nan")
 
-    simplified = _simplify_sympy(expr, rationalize_constants=rationalize_constants)
+    simplified = _simplify_sympy(expr, rationalize_constants=rationalize_constants, precision=precision, threshold=threshold)
     if simplified is None:
         return expr, float("nan")
     return sp.sstr(simplified), float(sum(1 for _ in sp.preorder_traversal(simplified)))

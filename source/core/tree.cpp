@@ -28,7 +28,7 @@ std::string format_scalar(Scalar value)
     std::ostringstream oss;
     oss << std::setprecision(12) << value;
     auto s = oss.str();
-    if (auto pos = s.find('.'); pos != std::string::npos) {
+    if (s.find('.') != std::string::npos && s.find('e') == std::string::npos && s.find('E') == std::string::npos) {
         while (!s.empty() && s.back() == '0') {
             s.pop_back();
         }

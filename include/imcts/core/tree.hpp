@@ -1,8 +1,9 @@
-// include/imcts/core/tree.hpp
 #pragma once
+
+#include <cstdint>
 #include <string>
 #include <vector>
-#include <cstdint>
+
 #include "node.hpp"
 #include "types.hpp"
 
@@ -13,21 +14,21 @@ public:
     Tree() = default;
     explicit Tree(std::vector<Node> nodes) : nodes_(std::move(nodes)) {}
 
-    // Recompute length fields for all nodes (postfix order)
+    // Recompute length fields for all nodes (postfix order).
     Tree& update_lengths();
 
-    // Number of nodes with optimize == true
+    // Number of nodes with optimize == true.
     [[nodiscard]] std::size_t num_coefficients() const;
 
-    // Get optimizable coefficient values (in postfix order)
+    // Get optimizable coefficient values (in postfix order).
     [[nodiscard]] std::vector<Scalar> get_coefficients() const;
 
-    // Set optimizable coefficient values (in postfix order)
+    // Set optimizable coefficient values (in postfix order).
     void set_coefficients(const std::vector<Scalar>& coeffs);
     void set_coefficients(std::span<const Scalar> coeffs);
 
-    // Structure-only hash: based on type, arity, var_index only.
-    // Ignores constant values — solves the cache inconsistency bug.
+    // Structure-only hash: based on type, arity, and var_index only.
+    // Ignores constant values to avoid cache inconsistency.
     [[nodiscard]] Hash structure_hash() const;
     [[nodiscard]] std::string to_string() const;
 
@@ -41,7 +42,7 @@ public:
     const Node& operator[](std::size_t i) const { return nodes_[i]; }
 
 private:
-    std::vector<Node> nodes_;  // postfix order (children before parent)
+    std::vector<Node> nodes_;  // postfix order (children before parent).
 };
 
 } // namespace imcts

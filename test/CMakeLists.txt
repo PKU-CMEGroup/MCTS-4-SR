@@ -1,4 +1,19 @@
-find_package(Catch2 3 CONFIG REQUIRED)
+option(IMCTS_USE_SYSTEM_CATCH2 "Prefer a system-installed Catch2 before fetching a local copy" ON)
+if(IMCTS_USE_SYSTEM_CATCH2)
+    find_package(Catch2 3 CONFIG QUIET)
+endif()
+if(NOT Catch2_FOUND)
+    message(STATUS "Catch2 not found; fetching Catch2 3.6.0 for this build.")
+    FetchContent_Declare(
+        Catch2
+        URL https://github.com/catchorg/Catch2/archive/refs/tags/v3.6.0.tar.gz
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_MakeAvailable(Catch2)
+endif()
+if(NOT TARGET Catch2::Catch2WithMain)
+    message(FATAL_ERROR "Catch2 is required for BUILD_TESTING, but neither a system package nor the bundled fetch path succeeded.")
+endif()
 include(Catch)
 
 function(add_imcts_test name)
@@ -16,4 +31,5 @@ add_imcts_test(test_interpreter)
 add_imcts_test(test_gp_manager)
 add_imcts_test(test_mcts)
 add_imcts_test(test_regressor)
+add_imcts_test(test_const_manual)
 add_imcts_test(test_tree_format)

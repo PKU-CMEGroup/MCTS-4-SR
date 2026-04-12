@@ -1,15 +1,15 @@
-#include <iostream>
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
+
 #include <vector>
-#include <cmath>
-#include "imcts/regressor.hpp"
+
 #include "imcts/core/bridge.hpp"
+#include "imcts/core/dataset.hpp"
 #include "imcts/eval/interpreter.hpp"
 #include "imcts/eval/optimizer.hpp"
-#include "imcts/core/dataset.hpp"
+#include "imcts/regressor.hpp"
 
-void test_optimizer_directly() {
-    std::cout << "=== Test 1: Direct CoefficientOptimizer test ===\n";
-    // Build tree for: R * x0 + R  (postfix: [x0, R, *, R, +])
+TEST_CASE("Coefficient optimizer fits affine coefficients") {
     std::vector<imcts::Node> nodes;
 
     imcts::Node x0(imcts::NodeType::Variable);
@@ -36,7 +36,6 @@ void test_optimizer_directly() {
     imcts::Tree tree(std::move(nodes));
     tree.update_lengths();
 
-    // Dataset: y = 2.5*x + 3.0
     int n = 50;
     std::vector<std::vector<float>> x_cols(1, std::vector<float>(n));
     std::vector<float> y(n);
@@ -44,37 +43,31 @@ void test_optimizer_directly() {
         x_cols[0][i] = static_cast<float>(i) / 10.0f;
         y[i] = 2.5f * x_cols[0][i] + 3.0f;
     }
-    imcts::Dataset ds(x_cols, y);
-    imcts::Range range{0, static_cast<size_t>(n)};
 
-    std::cout << "  Before opt: coeffs =";
-    for (auto c : tree.get_coefficients()) std::cout << " " << c;
-    std::cout << "\n";
+    imcts::Dataset ds(x_cols, y);
+    imcts::Range range{0, static_cast<std::size_t>(n)};
 
     auto opt_tree = imcts::CoefficientOptimizer::optimize(tree, ds, range, 50);
     auto coeffs = opt_tree.get_coefficients();
-    std::cout << "  After opt:  coeffs =";
-    for (auto c : coeffs) std::cout << " " << c;
-    std::cout << "\n";
+    REQUIRE(coeffs.size() == 2);
 
     auto pred = imcts::Interpreter::evaluate(opt_tree, ds, range);
-    double mse = 0;
+    double mse = 0.0;
     for (int i = 0; i < n; i++) {
-        double d = pred(i) - ds.y(i);
-        mse += d * d;
+        const double diff = pred(i) - ds.y(i);
+        mse += diff * diff;
     }
     mse /= n;
-    std::cout << "  MSE = " << mse << "\n";
-    std::cout << "  Expected c1~2.5, c2~3.0, MSE~0\n";
-    if (mse < 1e-10) std::cout << "  PASS\n"; else std::cout << "  FAIL\n";
+
+    REQUIRE(coeffs[0] == Catch::Approx(2.5).margin(1e-3));
+    REQUIRE(coeffs[1] == Catch::Approx(3.0).margin(1e-3));
+    REQUIRE(mse < 1e-10);
 }
 
-void test_hash_consistency() {
-    std::cout << "\n=== Test 2: Hash consistency after optimization ===\n";
+TEST_CASE("Tree structure hash ignores coefficient values") {
     auto pset = imcts::make_primitive_set({"+", "*", "R"}, 1);
     imcts::Bridge bridge(pset);
 
-    // prefix: + R * R x0  => R + R*x0
     std::vector<uint8_t> prefix = {
         pset.op_index("+"),
         pset.op_index("R"),
@@ -82,23 +75,19 @@ void test_hash_consistency() {
         pset.op_index("R"),
         pset.op_index("x0")
     };
-    auto tree1 = bridge.to_tree(prefix);
-    auto hash_before = tree1.structure_hash();
 
-    // Modify constants
-    tree1.set_coefficients({99.0, 42.0});
-    auto hash_after = tree1.structure_hash();
+    auto tree = bridge.to_tree(prefix);
+    const auto hash_before = tree.structure_hash();
+    tree.set_coefficients({99.0, 42.0});
+    const auto hash_after = tree.structure_hash();
 
-    std::cout << "  hash before: " << hash_before << "\n";
-    std::cout << "  hash after changing constants: " << hash_after << "\n";
-    if (hash_before == hash_after) std::cout << "  PASS: hash stable\n";
-    else std::cout << "  FAIL: hash changed!\n";
+    REQUIRE(hash_before == hash_after);
 }
 
-void test_full_regressor_with_constants() {
-    std::cout << "\n=== Test 3: Full Regressor with constants ===\n";
+TEST_CASE("Regressor can recover a simple affine expression with constants") {
     int n = 50;
-    std::vector<float> x0(n), y(n);
+    std::vector<float> x0(n);
+    std::vector<float> y(n);
     for (int i = 0; i < n; i++) {
         x0[i] = static_cast<float>(i) / 10.0f;
         y[i] = 3.14f * x0[i] + 1.0f;
@@ -113,17 +102,9 @@ void test_full_regressor_with_constants() {
     cfg.lm_iterations = 30;
 
     imcts::Regressor reg({{x0}}, y, cfg);
-    auto result = reg.fit(123);
-    std::cout << "  best_reward: " << result.best_reward << "\n";
-    std::cout << "  n_evals: " << result.n_evals << "\n";
-    if (result.best_reward > 0.99f) std::cout << "  PASS\n";
-    else std::cout << "  FAIL: reward too low\n";
-}
+    const auto result = reg.fit(123);
 
-int main() {
-    test_optimizer_directly();
-    test_hash_consistency();
-    test_full_regressor_with_constants();
-    std::cout << "\nAll tests completed.\n";
-    return 0;
+    REQUIRE(result.best_reward > 0.99f);
+    REQUIRE(result.n_evals > 0);
+    REQUIRE(result.expression.find("x0") != std::string::npos);
 }
