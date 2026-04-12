@@ -1,104 +1,184 @@
-# Improving MCTS for Symbolic Regression
-
-## 1. Project Overview
+# MCTS-4-SR
 
 ![iMCTS](./assets/iMCTS.png)
 
-This repository implements an improved Monte Carlo Tree Search (MCTS) framework tailored for symbolic regression. The primary enhancements to the standard MCTS procedure are:
+*Improving Monte Carlo Tree Search for Symbolic Regression*
 
-1. **Extreme Bandit Allocation Strategy** – an adaptive sampling scheme (UCB-extreme) to allocate more simulations to regions with high potential for optimal expressions.  
-2. **Evolution‑Inspired State‑Jumping Actions** – incorporating genetic‑programming‑style mutations and crossovers within the MCTS to diversify exploration and accelerate convergence.
+![Python](https://img.shields.io/badge/python-3.9%2B-blue)
+![C++](https://img.shields.io/badge/C%2B%2B-20-blue)
+![Bindings](https://img.shields.io/badge/bindings-pybind11-brightgreen)
 
-The main implementation of the algorithm resides in the `iMCTS` directory.
+MCTS-4-SR is a C++20 implementation of Monte Carlo Tree Search for symbolic regression, with `pybind11` Python bindings.
 
-Key features:
+This repository provides the C++ search core, the Python package interface (`import imcts`), benchmark tooling, and tests required to build and evaluate the project end to end.
 
-- **Custom Reward Functions**  
-  Users may supply arbitrary reward functions, provided that each returns a scalar in the interval \[0, 1\] and accepts three arguments:  
-  - `x` (input variable)  
-  - `y` (target variable)  
-  - `f` (candidate symbolic expression)  
+## Overview
 
-- **Support for Complex Constants**  
-  Expressions may include complex‑valued constants. In the symbol set, `R` denotes the real subspace and `C` the complex subspace.
+- C++20 core implementation for symbolic regression
+- Python bindings via `pybind11`
+- Benchmark runner for synthetic and black-box tasks
+- Example scripts and benchmark tooling
+- CMake-based build and test workflow
 
----
+## Installation
 
-## 2. System Requirements
-
-- **Python** ≥ 3.10
-
-To install all required dependencies, execute:
+Recommended setup:
 
 ```bash
-git clone https://github.com/PKU-CMEGroup/MCTS-4-SR
-cd MCTS-4-SR
+conda create -n imcts python=3.11 -y
+conda activate imcts
+pip install -U pip
 pip install -e .
 ```
 
----
+Alternative CMake build:
 
-## 3. Repository Contents
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DIMCTS_BUILD_PYTHON=ON -DBUILD_TESTING=ON
+cmake --build build -j
+```
 
-| Script                  | Description                                                                                   |
-|-------------------------|-----------------------------------------------------------------------------------------------|
-| `benchmark_runner.py`   | Runs the MCTS algorithm on a suite of symbolic‑regression benchmarks. Outputs are saved under `results/`. |
-| `demo.py`               | Demonstrates a run on the Nguyen-7 benchmark with default settings. You may modify the equation being tested. |
+## Quick Start
 
----
+Run the bundled example:
 
-## 4. Usage Instructions
+```bash
+python python/demo.py
+```
 
-### 4.1 Running the Algorithm
-
-Refer to demo.py; you can run the algorithm as follows:
+The Python API can also be used directly:
 
 ```python
 import numpy as np
-from iMCTS import Regressor
+import imcts
 
-var_num = 1
-X = np.random.uniform(0, 2, (var_num, 20))
+# One-variable regression dataset with shape [n_vars, n_samples].
+x = np.linspace(0, 2, 100, dtype=np.float32).reshape(1, 100)
+y = (np.sin(x[0]) + 0.5 * x[0]).astype(np.float32)
 
-def f(x):
-    return np.log(x[0] + 1) + np.log(x[0]**2 + 1)
+cfg = imcts.RegressorConfig()
+# Primitive set. Add "R" to enable learnable constants.
+cfg.ops = ["+", "-", "*", "/", "sin", "cos", "exp", "log", "R"]
 
-Y = f(X)
-model = Regressor(
-    x_train=X,
-    y_train=Y,
-    ops=['+', '-', '*', '/', 'sin', 'cos', 'exp', 'log'],  # If constants are needed, add 'R'
-    verbose=True,  # Prints detailed runtime logs
-)
-sym_exp, vec_exp, evaluations, path = model.fit()
+# Maximum expression tree depth.
+cfg.max_depth = 6
+
+# MCTS budget per search stage.
+cfg.K = 500
+
+# Exploration constant in tree search.
+cfg.c = 4.0
+
+# Controls the extreme-bandit style allocation behavior.
+cfg.gamma = 0.5
+
+# Probability of applying GP-based state jumping.
+cfg.gp_rate = 0.2
+
+# Mutation probability inside GP operations.
+cfg.mutation_rate = 0.1
+
+# Additional exploration rate during search.
+cfg.exploration_rate = 0.2
+
+# Limit on chained unary operators.
+cfg.max_unary = 999
+
+# Maximum number of learnable constants in an expression.
+cfg.max_constants = 4
+
+# Iterations for constant optimization.
+cfg.lm_iterations = 100
+
+# Stop after this many expression evaluations.
+cfg.max_evals = 100000
+
+# Early-stop tolerance for near-perfect solutions.
+cfg.succ_error_tol = 1e-6
+
+model = imcts.Regressor(x, y, cfg)
+
+# Set a seed for reproducible runs.
+result = model.fit(seed=42)
+
+print(result.best_reward)
+print(result.expression)
+print(imcts.simplify_expression(result.expression))
 ```
 
-The four outputs above correspond to, respectively, the simplified expression, the unsimplified expression, the number of valid equations generated by the algorithm, and the corresponding symbol sequence. Note that in the implementation of the fit method in `iMCTS/regressor.py`, the maximum runtime is limited to 48 hours; you may modify this as needed.
+Alternatively, you can use the default algorithm parameters defined in `include/imcts/regressor.hpp` by simply running:
 
-### 4.2 Running Benchmarks
+```python
+model = imcts.Regressor(x, y)
+```
 
-To evaluate performance on the Nguyen benchmark suite, for example, run:
+The `fit()` method returns:
+
+- `best_path`
+- `best_coefficients`
+- `expression`
+- `best_reward`
+- `n_evals`
+
+## Benchmarks
+
+List available benchmark cases:
 
 ```bash
-python benchmark_runner.py --benchmark Nguyen --config ./configs/basic.yaml
+python -m imcts.benchmarks --list
 ```
 
-By default, this command uses 10 parallel processes. You can modify this setting in `./benchmarks/run.py`.
+Run Nguyen benchmarks:
 
-The `--benchmark` option may be set to any of the following:
+```bash
+python -m imcts.benchmarks --group Nguyen
+```
 
-- `Nguyen`  
-- `NguyenC`  
-- `Jin`  
-- `Livermore`  
-- `Blackbox`
+Run black-box benchmarks (small scale):
 
-> **Important:** Prior to using the `Blackbox` benchmark, download the `datasets/` directory from the [PMLB repository](https://github.com/EpistasisLab/pmlb) and place it in the project root.
+```bash
+python -m imcts.benchmarks --group BlackBox --cases 1-3 --runs 3
+```
 
-Configuration files reside in the `configs/` directory. You may adjust algorithm parameters (e.g. exploration constant, mutation rate, UCB-extreme parameters) by editing the corresponding YAML file.
+Black-box benchmarks expect datasets under `datasets/`. The data format is based on [PMLB](https://github.com/EpistasisLab/pmlb). If a `.tsv.gz` file appears as a Git LFS pointer instead of real data, fetch the dataset contents before running black-box benchmarks.
 
-## 5. Citation
+Benchmark results are written to `benchmark_results/` by default.
 
-Zhengyao Huang, Daniel Zhengyu Huang, Tiannan Xiao, Dina Ma, Zhenyu Ming, Hao Shi, Yuanhui Wen. "[Improving Monte Carlo Tree Search for Symbolic Regression](https://arxiv.org/abs/2509.15929)."
+## Testing
 
----
+Run Python smoke tests:
+
+```bash
+python python/test_imcts.py
+```
+
+Run C++ tests:
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
+## Repository Structure
+
+```text
+include/imcts/     C++ headers
+source/            C++ implementation
+imcts/             Python package and benchmark runner
+python/            bindings and examples
+test/              Catch2 tests
+assets/            project image and slides
+```
+
+## Notes
+
+- `x_train` is expected to have shape `[n_vars, n_samples]`.
+- Add `R` to `ops` when learnable constants are required.
+- Invalid numerical expressions are penalized during evaluation.
+
+## Citation
+
+If you use this project, please cite:
+
+> Zhengyao Huang, Daniel Zhengyu Huang, Tiannan Xiao, Dina Ma, Zhenyu Ming, Hao Shi, Yuanhui Wen.  
+> *Improving Monte Carlo Tree Search for Symbolic Regression*.  
+> https://arxiv.org/abs/2509.15929

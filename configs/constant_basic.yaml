@@ -1,4 +1,0 @@
-base: basic.yaml
-
-model_params:
-  ops: "+, -, *, /, sin, cos, exp, log, R"

@@ -1,0 +1,428 @@
+{
+  "description": "Basic symbolic regression benchmark cases.",
+  "constant_groups": {
+    "requires_constants": [
+      "NguyenC",
+      "Jin"
+    ],
+    "no_constants": [
+      "Nguyen",
+      "Livermore"
+    ]
+  },
+  "groups": {
+    "Nguyen": [
+      {
+        "id": 1,
+        "name": "Nguyen-1",
+        "expression": "x[0]**3 + x[0]**2 + x[0]",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 2,
+        "name": "Nguyen-2",
+        "expression": "x[0]**4 + x[0]**3 + x[0]**2 + x[0]",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 3,
+        "name": "Nguyen-3",
+        "expression": "x[0]**5 + x[0]**4 + x[0]**3 + x[0]**2 + x[0]",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 4,
+        "name": "Nguyen-4",
+        "expression": "x[0]**6 + x[0]**5 + x[0]**4 + x[0]**3 + x[0]**2 + x[0]",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 5,
+        "name": "Nguyen-5",
+        "expression": "sin(x[0]**2) * cos(x[0]) - 1",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 6,
+        "name": "Nguyen-6",
+        "expression": "sin(x[0]) + sin(x[0] + x[0]**2)",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 7,
+        "name": "Nguyen-7",
+        "expression": "log(x[0]**2 + 1) + log(x[0] + 1)",
+        "variables": 1,
+        "data_range": [0, 2],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 8,
+        "name": "Nguyen-8",
+        "expression": "sqrt(x[0])",
+        "variables": 1,
+        "data_range": [0, 4],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 9,
+        "name": "Nguyen-9",
+        "expression": "sin(x[0]) + sin(x[1]**2)",
+        "variables": 2,
+        "data_range": [0, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 10,
+        "name": "Nguyen-10",
+        "expression": "2 * sin(x[0]) * cos(x[1])",
+        "variables": 2,
+        "data_range": [0, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 11,
+        "name": "Nguyen-11",
+        "expression": "x[0]**x[1]",
+        "variables": 2,
+        "data_range": [0, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 12,
+        "name": "Nguyen-12*",
+        "expression": "x[0]**4 - x[0]**3 + 0.5*x[1]**2 - x[1]",
+        "variables": 2,
+        "data_range": [0, 10],
+        "samples": 20,
+        "sampling": "U"
+      }
+    ],
+    "NguyenC": [
+      {
+        "id": 1,
+        "name": "NguyenC-1",
+        "expression": "3.39 * x[0]**3 + 2.12 * x[0]**2 + 1.78 * x[0]",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 5,
+        "name": "NguyenC-5",
+        "expression": "sin(x[0]**2) * cos(x[0]) - 0.75",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 7,
+        "name": "NguyenC-7",
+        "expression": "log(x[0] + 1.4) + log(x[0]**2 + 1.3)",
+        "variables": 1,
+        "data_range": [0, 2],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 8,
+        "name": "NguyenC-8",
+        "expression": "sqrt(1.23*x[0])",
+        "variables": 1,
+        "data_range": [0, 4],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 10,
+        "name": "NguyenC-10",
+        "expression": "sin(1.5*x[0]) * cos(0.5*x[1])",
+        "variables": 2,
+        "data_range": [0, 1],
+        "samples": 20,
+        "sampling": "U"
+      }
+    ],
+    "Livermore": [
+      {
+        "id": 1,
+        "name": "Livermore-1",
+        "expression": "1/3 + x[0] + sin(x[0]**2)",
+        "variables": 1,
+        "data_range": [-10, 10],
+        "samples": 1000,
+        "sampling": "U"
+      },
+      {
+        "id": 2,
+        "name": "Livermore-2",
+        "expression": "sin(x[0]**2) * cos(x[0]) - 2",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 3,
+        "name": "Livermore-3",
+        "expression": "sin(x[0]**3) * cos(x[0]**2) - 1",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 4,
+        "name": "Livermore-4",
+        "expression": "log(x[0]**2 + 1) + log(x[0] + 1) + log(x[0])",
+        "variables": 1,
+        "data_range": [0, 2],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 5,
+        "name": "Livermore-5",
+        "expression": "x[0]**4 - x[0]**3 + x[0]**2 - x[1]",
+        "variables": 2,
+        "data_range": [0, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 6,
+        "name": "Livermore-6",
+        "expression": "4*x[0]**4 + 3*x[0]**3 + 2*x[0]**2 + x[0]",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 7,
+        "name": "Livermore-7",
+        "expression": "sinh(x[0])",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 8,
+        "name": "Livermore-8",
+        "expression": "cosh(x[0])",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 9,
+        "name": "Livermore-9",
+        "expression": "x[0]**9 + x[0]**8 + x[0]**7 + x[0]**6 + x[0]**5 + x[0]**4 + x[0]**3 + x[0]**2 + x[0]",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 10,
+        "name": "Livermore-10",
+        "expression": "6*sin(x[0]) * cos(x[1])",
+        "variables": 2,
+        "data_range": [0, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 11,
+        "name": "Livermore-11",
+        "expression": "(x[0]**2 * x[1]**2) / (x[0] + x[1])",
+        "variables": 2,
+        "data_range": [-1, 1],
+        "samples": 50,
+        "sampling": "U"
+      },
+      {
+        "id": 12,
+        "name": "Livermore-12",
+        "expression": "x[0]**5 / x[1]**3",
+        "variables": 2,
+        "data_range": [-1, 1],
+        "samples": 50,
+        "sampling": "U"
+      },
+      {
+        "id": 13,
+        "name": "Livermore-13",
+        "expression": "x[0]**(1/3)",
+        "variables": 1,
+        "data_range": [0, 4],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 14,
+        "name": "Livermore-14",
+        "expression": "x[0]**3 + x[0]**2 + x[0] + sin(x[0]) + sin(x[0]**2)",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 15,
+        "name": "Livermore-15",
+        "expression": "x[0]**(1/5)",
+        "variables": 1,
+        "data_range": [0, 4],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 16,
+        "name": "Livermore-16",
+        "expression": "x[0]**(2/5)",
+        "variables": 1,
+        "data_range": [0, 4],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 17,
+        "name": "Livermore-17",
+        "expression": "4*sin(x[0])*cos(x[1])",
+        "variables": 2,
+        "data_range": [0, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 18,
+        "name": "Livermore-18",
+        "expression": "sin(x[0]**2)*cos(x[0]) - 5",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 19,
+        "name": "Livermore-19",
+        "expression": "x[0]**5 + x[0]**4 + x[0]**2 + x[0]",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 20,
+        "name": "Livermore-20",
+        "expression": "exp(-x[0]**2)",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 21,
+        "name": "Livermore-21",
+        "expression": "x[0]**8 + x[0]**7 + x[0]**6 + x[0]**5 + x[0]**4 + x[0]**3 + x[0]**2 + x[0]",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      },
+      {
+        "id": 22,
+        "name": "Livermore-22",
+        "expression": "exp(-0.5*x[0]**2)",
+        "variables": 1,
+        "data_range": [-1, 1],
+        "samples": 20,
+        "sampling": "U"
+      }
+    ],
+    "Jin": [
+      {
+        "id": 1,
+        "name": "Jin-1",
+        "expression": "2.5*x[0]**4 - 1.3*x[0]**3 + 0.5*x[1]**2 - 1.7*x[1]",
+        "variables": 2,
+        "data_range": [-3, 3],
+        "samples": 100,
+        "sampling": "U"
+      },
+      {
+        "id": 2,
+        "name": "Jin-2",
+        "expression": "8.0*x[0]**2 + 8.0*x[1]**3 - 15.0",
+        "variables": 2,
+        "data_range": [-3, 3],
+        "samples": 100,
+        "sampling": "U"
+      },
+      {
+        "id": 3,
+        "name": "Jin-3",
+        "expression": "0.2*x[0]**3 + 0.5*x[1]**3 - 1.2*x[1] - 0.5*x[0]",
+        "variables": 2,
+        "data_range": [-3, 3],
+        "samples": 100,
+        "sampling": "U"
+      },
+      {
+        "id": 4,
+        "name": "Jin-4",
+        "expression": "1.5*exp(x[0]) + 5.0*cos(x[1])",
+        "variables": 2,
+        "data_range": [-3, 3],
+        "samples": 100,
+        "sampling": "U"
+      },
+      {
+        "id": 5,
+        "name": "Jin-5",
+        "expression": "6.0*sin(x[0])*cos(x[1])",
+        "variables": 2,
+        "data_range": [-3, 3],
+        "samples": 100,
+        "sampling": "U"
+      },
+      {
+        "id": 6,
+        "name": "Jin-6",
+        "expression": "1.35*x[0]*x[1] + 5.5*sin((x[0]-1) * (x[1]-1))",
+        "variables": 2,
+        "data_range": [-3, 3],
+        "samples": 100,
+        "sampling": "U"
+      }
+    ]
+  }
+}

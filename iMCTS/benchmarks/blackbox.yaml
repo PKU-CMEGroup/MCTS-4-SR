@@ -1,0 +1,24 @@
+runs: 10
+seed_start: 0
+data:
+  samples:
+  test_ratio: 0.25
+  label: target
+  dataset_dir:
+search:
+  ops: ["+", "-", "*", "/", "sin", "cos", "exp", "log", "R"]
+  max_depth: 6
+  max_unary: 999
+  max_constants: 999
+  lm_iterations: 50
+  K: 500
+  c: 4.0
+  gamma: 0.5
+  gp_rate: 0.2
+  mutation_rate: 0.1
+  exploration_rate: 0.2
+  succ_error_tol: 1.0e-6
+  max_evals: 500000
+runtime:
+  threads:
+  max_wall_time_hours: 48.0
