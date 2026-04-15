@@ -1,8 +1,6 @@
 // source/eval/interpreter.cpp
 #include "imcts/eval/interpreter.hpp"
-#include "imcts/core/profiling.hpp"
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -15,9 +13,6 @@ namespace imcts {
 
 namespace {
 
-constexpr int kMinBatchesForParallelJacobian = 32;
-constexpr int kBatchesPerThreadTarget = 8;
-
 inline int count_coefficients(const std::vector<Node>& nodes)
 {
     int num_coeffs = 0;
@@ -29,10 +24,9 @@ inline int count_coefficients(const std::vector<Node>& nodes)
     return num_coeffs;
 }
 
-inline void fill_child_map(const std::vector<Node>& nodes, std::span<std::array<int, 2>> child_map)
+inline std::vector<std::array<int, 2>> build_child_map(const std::vector<Node>& nodes)
 {
-    std::fill(child_map.begin(), child_map.begin() + static_cast<std::ptrdiff_t>(nodes.size()),
-              std::array<int, 2>{-1, -1});
+    std::vector<std::array<int, 2>> child_map(nodes.size(), {-1, -1});
     std::vector<int> idx_stack;
     idx_stack.reserve(nodes.size());
 
@@ -45,7 +39,7 @@ inline void fill_child_map(const std::vector<Node>& nodes, std::span<std::array<
             case 1: {
                 int child_idx = idx_stack.back();
                 idx_stack.pop_back();
-                child_map[static_cast<std::size_t>(idx)] = {child_idx, -1};
+                child_map[idx] = {child_idx, -1};
                 idx_stack.push_back(idx);
                 break;
             }
@@ -54,12 +48,14 @@ inline void fill_child_map(const std::vector<Node>& nodes, std::span<std::array<
                 idx_stack.pop_back();
                 int left_idx = idx_stack.back();
                 idx_stack.pop_back();
-                child_map[static_cast<std::size_t>(idx)] = {left_idx, right_idx};
+                child_map[idx] = {left_idx, right_idx};
                 idx_stack.push_back(idx);
                 break;
             }
         }
     }
+
+    return child_map;
 }
 
 } // anonymous namespace
@@ -176,89 +172,28 @@ Interpreter::evaluate_with_jacobian(const Tree& tree, const Dataset& ds, Range r
 
 void Interpreter::evaluate_with_jacobian(const Tree& tree, const Dataset& ds, Range range,
                                          InterpreterWorkspace& workspace) {
-#ifdef IMCTS_ENABLE_PROFILING
-    const auto t_total0 = std::chrono::steady_clock::now();
-    std::uint64_t prepare_ns = 0;
-    std::uint64_t child_map_ns = 0;
-    std::uint64_t buffer_setup_ns = 0;
-    std::uint64_t forward_ns = 0;
-    std::uint64_t reverse_ns = 0;
-    std::uint64_t writeback_ns = 0;
-#endif
     const auto& nodes = tree.nodes();
     const int n = static_cast<int>(range.size);
     const int nn = static_cast<int>(nodes.size());
     int num_coeffs = count_coefficients(nodes);
 
-#ifdef IMCTS_ENABLE_PROFILING
-    const auto t_prepare0 = std::chrono::steady_clock::now();
-#endif
     workspace.prepare_jacobian(range.size, nodes.size(), static_cast<std::size_t>(num_coeffs));
-#ifdef IMCTS_ENABLE_PROFILING
-    prepare_ns = static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - t_prepare0).count());
-    const auto t_child_map0 = std::chrono::steady_clock::now();
-#endif
     const auto total = static_cast<Eigen::Index>(range.size);
-    fill_child_map(nodes, std::span<std::array<int, 2>>(workspace.child_map_.data(), nodes.size()));
-    const auto child_map = std::span<const std::array<int, 2>>(workspace.child_map_.data(), nodes.size());
+    const auto child_map = build_child_map(nodes);
     const auto num_batches = static_cast<int>((total + InterpreterWorkspace::kBatchSize - 1)
                                               / InterpreterWorkspace::kBatchSize);
-#ifdef IMCTS_ENABLE_PROFILING
-    child_map_ns = static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - t_child_map0).count());
-    const auto t_buffer0 = std::chrono::steady_clock::now();
-#endif
-
-    int num_threads = 1;
-#ifdef _OPENMP
-    if (num_batches >= kMinBatchesForParallelJacobian) {
-        const int max_threads = omp_get_max_threads();
-        const int target_threads = std::max(2, num_batches / kBatchesPerThreadTarget);
-        num_threads = std::min(max_threads, target_threads);
-    }
-#endif
-
-    std::vector<Eigen::ArrayXXd> value_buffers;
-    std::vector<Eigen::ArrayXXd> adjoint_buffers;
-    if (num_threads > 1) {
-        value_buffers.reserve(static_cast<std::size_t>(num_threads));
-        adjoint_buffers.reserve(static_cast<std::size_t>(num_threads));
-        for (int i = 0; i < num_threads; ++i) {
-            value_buffers.emplace_back(InterpreterWorkspace::kBatchSize,
-                                       static_cast<Eigen::Index>(nodes.size()));
-            adjoint_buffers.emplace_back(InterpreterWorkspace::kBatchSize,
-                                         static_cast<Eigen::Index>(nodes.size()));
-        }
-    }
-#ifdef IMCTS_ENABLE_PROFILING
-    buffer_setup_ns = static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - t_buffer0).count());
-#endif
 
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static) if (num_batches > 1) num_threads(num_threads)
+#pragma omp parallel for schedule(static) if (num_batches > 1)
 #endif
     for (int batch = 0; batch < num_batches; ++batch) {
-        int thread_id = 0;
-#ifdef _OPENMP
-        thread_id = omp_get_thread_num();
-#endif
-        auto& values = num_threads == 1
-            ? workspace.values_
-            : value_buffers[static_cast<std::size_t>(thread_id)];
-        auto& adjoint = num_threads == 1
-            ? workspace.adjoint_
-            : adjoint_buffers[static_cast<std::size_t>(thread_id)];
+        Eigen::ArrayXXd values(InterpreterWorkspace::kBatchSize,
+                               static_cast<Eigen::Index>(nodes.size()));
+        Eigen::ArrayXXd adjoint(InterpreterWorkspace::kBatchSize,
+                                static_cast<Eigen::Index>(nodes.size()));
         const Eigen::Index row0 = static_cast<Eigen::Index>(batch) * InterpreterWorkspace::kBatchSize;
         const Eigen::Index rem = std::min(InterpreterWorkspace::kBatchSize, total - row0);
 
-#ifdef IMCTS_ENABLE_PROFILING
-        const auto t_forward0 = std::chrono::steady_clock::now();
-#endif
         for (int idx = 0; idx < nn; ++idx) {
             const auto& node = nodes[idx];
             switch (node.arity) {
@@ -303,16 +238,6 @@ void Interpreter::evaluate_with_jacobian(const Tree& tree, const Dataset& ds, Ra
                 }
             }
         }
-#ifdef IMCTS_ENABLE_PROFILING
-        const auto forward_elapsed = static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - t_forward0).count());
-#ifdef _OPENMP
-#pragma omp atomic
-#endif
-        forward_ns += forward_elapsed;
-        const auto t_reverse0 = std::chrono::steady_clock::now();
-#endif
 
         adjoint.topRows(rem).setZero();
         adjoint.col(nn - 1).head(rem).setOnes();
@@ -320,43 +245,38 @@ void Interpreter::evaluate_with_jacobian(const Tree& tree, const Dataset& ds, Ra
         for (int i = nn - 1; i >= 0; --i) {
             const auto& node = nodes[i];
             if (node.arity == 1) {
-                const int child_idx = child_map[static_cast<std::size_t>(i)][0];
+                int child_idx = child_map[i][0];
+                Eigen::ArrayXd local_deriv(rem);
                 switch (node.type) {
                     case NodeType::Sin:
-                        adjoint.col(child_idx).head(rem) += adjoint.col(i).head(rem)
-                            * values.col(child_idx).head(rem).cos();
+                        local_deriv = values.col(child_idx).head(rem).cos();
                         break;
                     case NodeType::Cos:
-                        adjoint.col(child_idx).head(rem) -= adjoint.col(i).head(rem)
-                            * values.col(child_idx).head(rem).sin();
+                        local_deriv = -values.col(child_idx).head(rem).sin();
                         break;
                     case NodeType::Exp:
-                        adjoint.col(child_idx).head(rem) += adjoint.col(i).head(rem)
-                            * values.col(i).head(rem);
+                        local_deriv = values.col(i).head(rem);
                         break;
                     case NodeType::Log:
-                        adjoint.col(child_idx).head(rem) += adjoint.col(i).head(rem)
-                            / values.col(child_idx).head(rem);
+                        local_deriv = 1.0 / values.col(child_idx).head(rem);
                         break;
                     case NodeType::Tanh:
-                        adjoint.col(child_idx).head(rem) += adjoint.col(i).head(rem)
-                            * (1.0 - values.col(i).head(rem).square());
+                        local_deriv = 1.0 - values.col(i).head(rem).square();
                         break;
                     case NodeType::Sqrt:
-                        adjoint.col(child_idx).head(rem) += adjoint.col(i).head(rem)
-                            / (2.0 * values.col(i).head(rem));
+                        local_deriv = 1.0 / (2.0 * values.col(i).head(rem));
                         break;
                     case NodeType::Abs:
-                        adjoint.col(child_idx).head(rem) += adjoint.col(i).head(rem)
-                            * values.col(child_idx).head(rem).sign();
+                        local_deriv = values.col(child_idx).head(rem).sign();
                         break;
                     default:
-                        adjoint.col(child_idx).head(rem) += adjoint.col(i).head(rem);
+                        local_deriv.setOnes();
                         break;
                 }
+                adjoint.col(child_idx).head(rem) += adjoint.col(i).head(rem) * local_deriv;
             } else if (node.arity == 2) {
-                const int left_idx  = child_map[static_cast<std::size_t>(i)][0];
-                const int right_idx = child_map[static_cast<std::size_t>(i)][1];
+                int left_idx  = child_map[i][0];
+                int right_idx = child_map[i][1];
 
                 switch (node.type) {
                     case NodeType::Add:
@@ -384,16 +304,6 @@ void Interpreter::evaluate_with_jacobian(const Tree& tree, const Dataset& ds, Ra
                 }
             }
         }
-#ifdef IMCTS_ENABLE_PROFILING
-        const auto reverse_elapsed = static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - t_reverse0).count());
-#ifdef _OPENMP
-#pragma omp atomic
-#endif
-        reverse_ns += reverse_elapsed;
-        const auto t_writeback0 = std::chrono::steady_clock::now();
-#endif
 
         int col = 0;
         for (int i = 0; i < nn; ++i) {
@@ -402,33 +312,8 @@ void Interpreter::evaluate_with_jacobian(const Tree& tree, const Dataset& ds, Ra
             }
         }
         workspace.result_.segment(row0, rem) = values.col(nn - 1).head(rem).matrix();
-#ifdef IMCTS_ENABLE_PROFILING
-        const auto writeback_elapsed = static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - t_writeback0).count());
-#ifdef _OPENMP
-#pragma omp atomic
-#endif
-        writeback_ns += writeback_elapsed;
-#endif
     }
 
-#ifdef IMCTS_ENABLE_PROFILING
-    profiling::record_jacobian_call(
-        static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - t_total0).count()),
-        prepare_ns,
-        child_map_ns,
-        buffer_setup_ns,
-        forward_ns,
-        reverse_ns,
-        writeback_ns,
-        static_cast<std::uint64_t>(num_batches),
-        static_cast<std::uint64_t>(nn),
-        static_cast<std::uint64_t>(num_coeffs),
-        static_cast<std::uint64_t>(range.size));
-#endif
 }
 
 } // namespace imcts
