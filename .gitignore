@@ -10,3 +10,4 @@ dist/
 *.egg-info/
 benchmark_results/
 datasets/
+.pytest_cache
