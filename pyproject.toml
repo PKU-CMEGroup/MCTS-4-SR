@@ -58,7 +58,7 @@ test = ["pytest>=7"]
 minimum-version = "build-system.requires"
 cmake.build-type = "Release"
 cmake.args = ["-DIMCTS_BUILD_PYTHON=ON", "-DBUILD_TESTING=OFF"]
-wheel.packages = []
+wheel.packages = ["imcts"]
 
 [tool.scikit-build.sdist]
 include = [

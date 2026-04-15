@@ -88,21 +88,6 @@ if(IMCTS_BUILD_PYTHON)
         LIBRARY DESTINATION imcts
         RUNTIME DESTINATION imcts
     )
-    install(FILES
-        imcts/__init__.py
-        imcts/pretty.py
-        DESTINATION imcts
-    )
-    install(FILES
-        imcts/benchmarks/__init__.py
-        imcts/benchmarks/__main__.py
-        imcts/benchmarks/runner.py
-        imcts/benchmarks/basic.yaml
-        imcts/benchmarks/blackbox.yaml
-        imcts/benchmarks/blackbox.json
-        imcts/benchmarks/basic.json
-        DESTINATION imcts/benchmarks
-    )
 
     if(BUILD_TESTING)
         add_test(
