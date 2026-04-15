@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
 
 DEFAULT_OPS = ["+", "-", "*", "/", "sin", "cos", "exp", "log"]
-DEFAULT_THREADS = max(1, os.cpu_count() or 1)
 
 
 @dataclass(frozen=True)
@@ -45,7 +43,6 @@ class SearchSettings:
 
 @dataclass(frozen=True)
 class RuntimeSettings:
-    threads: int
     max_wall_time_hours: float | None
 
 
@@ -79,10 +76,6 @@ class BenchmarkSettings:
     @property
     def test_ratio(self) -> float:
         return self.data.test_ratio
-
-    @property
-    def threads(self) -> int:
-        return self.runtime.threads
 
     @property
     def max_wall_time_hours(self) -> float | None:
@@ -235,7 +228,6 @@ def build_settings(
         ),
     )
     runtime = RuntimeSettings(
-        threads=int(pick(args.threads, nested_get(config, "runtime", "threads"), DEFAULT_THREADS)),
         max_wall_time_hours=pick(args.max_wall_time_hours, nested_get(config, "runtime", "max_wall_time_hours")),
     )
     return BenchmarkSettings(

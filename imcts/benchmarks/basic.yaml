@@ -21,5 +21,4 @@ search:
   succ_error_tol: 1.0e-6
   max_evals: 2000000
 runtime:
-  threads:
   max_wall_time_hours:

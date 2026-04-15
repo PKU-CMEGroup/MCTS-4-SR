@@ -25,7 +25,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Write one CSV per case. In this mode --output is treated as an output directory.",
     )
     parser.add_argument("--list", action="store_true", help="List available groups/cases and exit.")
-    parser.add_argument("--threads", type=int, default=None, help="OMP_NUM_THREADS value.")
     parser.add_argument("--ops", default=None, help="Comma-separated primitive set.")
     parser.add_argument("--max-evals", type=int, default=None)
     parser.add_argument("--max-depth", type=int, default=None)

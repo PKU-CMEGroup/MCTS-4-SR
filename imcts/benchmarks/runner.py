@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import os
 import time
 from pathlib import Path
 from typing import Sequence
@@ -14,10 +13,6 @@ from .config import build_settings, load_yaml_resource
 from .registry import BenchmarkRegistry, load_bundled_registry, print_available_cases
 from .sources import build_source, resolve_dataset_dir
 from .writer import case_output_path, combined_output_path, split_output_dir, write_csv
-
-
-def configure_environment(threads: int) -> None:
-    os.environ["OMP_NUM_THREADS"] = str(threads)
 
 
 def resolve_group_name(args_group: str | None, forced_group: str | None) -> str:
@@ -58,7 +53,6 @@ def main(
         raise SystemExit(str(exc)) from exc
     config = load_yaml_resource(args.config, group.default_config_name)
     settings = build_settings(args, group, config)
-    configure_environment(settings.threads)
     executor.require_imcts()
 
     try:
@@ -107,12 +101,14 @@ def main(
             rows.append(result)
             case_rows.append(result)
 
+            train_r2_text = f"{result.train_r2:.6f}" if math.isfinite(result.train_r2) else "nan"
             test_r2_text = f"{result.test_r2:.6f}" if math.isfinite(result.test_r2) else "nan"
             complexity_text = f"{result.complexity:.0f}" if math.isfinite(result.complexity) else "nan"
             print(
                 f"{case['name']:>18} run={run_index:<2} seed={seed:<5} "
                 f"time={result.time_sec:.3f}s reward={result.reward:.6f} "
-                f"test_r2={test_r2_text} complexity={complexity_text} evals={result.evaluations}"
+                f"train_r2={train_r2_text} test_r2={test_r2_text} "
+                f"complexity={complexity_text} evals={result.evaluations}"
             )
 
         if args.split_by_case and case_rows:

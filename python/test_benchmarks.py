@@ -39,7 +39,6 @@ def make_args(**overrides) -> argparse.Namespace:
         "output": None,
         "split_by_case": False,
         "list": False,
-        "threads": None,
         "ops": None,
         "max_evals": None,
         "max_depth": None,
