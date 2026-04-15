@@ -18,12 +18,12 @@ struct RegressorConfig {
     int   K                = 500;
     float c                = 4.0f;
     float gamma            = 0.5f;
-    float gp_rate          = 0.5f;
+    float gp_rate          = 0.2f;
     float mutation_rate    = 0.1f;
     float exploration_rate = 0.2f;
     int   max_unary        = 999;
     int   max_constants    = 999;
-    int   lm_iterations    = 50;
+    int   lm_iterations    = 100;
     int   max_evals        = 2000000;
     float succ_error_tol   = 1e-6f;
 };
