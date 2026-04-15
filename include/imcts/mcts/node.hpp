@@ -52,20 +52,52 @@ struct MCTSNode {
 
     // Random non-terminal child
     MCTSNode* random_child(RandomGenerator& rng) {
-        std::vector<MCTSNode*> valid;
-        for (auto& ch : children)
-            if (!ch->is_terminal_flag) valid.push_back(ch.get());
-        if (valid.empty()) return children.empty() ? nullptr : children[0].get();
-        return valid[rng() % valid.size()];
+        int valid_count = 0;
+        for (const auto& ch : children) {
+            if (!ch->is_terminal_flag) {
+                ++valid_count;
+            }
+        }
+        if (valid_count == 0) return children.empty() ? nullptr : children[0].get();
+
+        int selected = static_cast<int>(rng() % static_cast<std::size_t>(valid_count));
+        for (auto& ch : children) {
+            if (ch->is_terminal_flag) {
+                continue;
+            }
+            if (selected-- == 0) {
+                return ch.get();
+            }
+        }
+        return children.empty() ? nullptr : children[0].get();
     }
 
     // Propagate (reward, path) upward through the tree
     void backpropagate(std::vector<uint8_t> path, float reward) {
+        std::size_t prefix_len = 0;
+        for (MCTSNode* cur = this; cur != nullptr && cur->parent != nullptr; cur = cur->parent) {
+            ++prefix_len;
+        }
+
+        std::vector<uint8_t> full_path(prefix_len + path.size());
+        std::copy(path.begin(), path.end(), full_path.begin() + static_cast<std::ptrdiff_t>(prefix_len));
+
         MCTSNode* cur = this;
+        std::size_t index = prefix_len;
+        while (cur != nullptr && cur->parent != nullptr) {
+            full_path[--index] = cur->move;
+            cur = cur->parent;
+        }
+
+        cur = this;
+        std::size_t start = prefix_len;
         while (cur != nullptr) {
-            if (!cur->path_queue.append(path, reward)) break;
-            // prepend cur->move so parent sees the full path from its perspective
-            path.insert(path.begin(), cur->move);
+            if (!cur->path_queue.append(std::span<const uint8_t>(full_path).subspan(start), reward)) {
+                break;
+            }
+            if (cur->parent != nullptr) {
+                --start;
+            }
             cur = cur->parent;
         }
     }
@@ -73,14 +105,15 @@ struct MCTSNode {
     // Propagate downward: update children along a known good path
     void propagate(const std::vector<uint8_t>& path, float reward) {
         MCTSNode* cur = this;
-        for (int i = 0; i < static_cast<int>(path.size()); i++) {
+        auto remaining = std::span<const uint8_t>(path);
+        while (!remaining.empty()) {
             MCTSNode* found = nullptr;
             for (auto& ch : cur->children) {
-                if (ch->move == path[i]) { found = ch.get(); break; }
+                if (ch->move == remaining.front()) { found = ch.get(); break; }
             }
             if (!found) break;
-            std::vector<uint8_t> sub_path(path.begin() + i + 1, path.end());
-            found->path_queue.append(sub_path, reward);
+            remaining = remaining.subspan(1);
+            found->path_queue.append(remaining, reward);
             cur = found;
         }
     }
