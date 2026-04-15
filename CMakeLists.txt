@@ -101,7 +101,13 @@ if(IMCTS_BUILD_PYTHON)
     install(FILES
         imcts/benchmarks/__init__.py
         imcts/benchmarks/__main__.py
+        imcts/benchmarks/cli.py
+        imcts/benchmarks/config.py
+        imcts/benchmarks/executor.py
+        imcts/benchmarks/registry.py
         imcts/benchmarks/runner.py
+        imcts/benchmarks/sources.py
+        imcts/benchmarks/writer.py
         imcts/benchmarks/basic.yaml
         imcts/benchmarks/blackbox.yaml
         imcts/benchmarks/blackbox.json
