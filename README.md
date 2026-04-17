@@ -116,6 +116,7 @@ Run Nguyen benchmarks:
 
 ```bash
 python -m imcts.benchmarks --group Nguyen
+python -m imcts.benchmarks --group Nguyen --workers 8
 ```
 
 Run a small black-box benchmark sweep:
@@ -124,9 +125,19 @@ Run a small black-box benchmark sweep:
 python -m imcts.benchmarks --group BlackBox --cases 1-3 --runs 3
 ```
 
+Use `--workers` to control the number of parallel worker processes for independent seed runs. By default, the benchmark runner uses the physical CPU core count; pass `--workers 1` to disable parallelism.
+
 Black-box benchmarks expect datasets under `datasets/`. The format follows [PMLB](https://github.com/EpistasisLab/pmlb). If a `.tsv.gz` file is only a Git LFS pointer, fetch the real dataset contents before running the benchmark.
 
-Benchmark outputs are written to `benchmark_results/` by default.
+Benchmark outputs are written under `benchmark_results/<group>/` by default. You can also set `output.results_dir` in YAML or pass `--results-dir` to separate different experiment configurations.
+
+Summarize benchmark outputs across groups or cases:
+
+```bash
+python -m imcts.benchmarks.report
+python -m imcts.benchmarks.report nguyen --level case
+python -m imcts.benchmarks.report --result_dir path/to/results
+```
 
 ## Testing
 

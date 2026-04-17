@@ -53,6 +53,15 @@ class BenchmarkRegistry:
         return {group_name: self.get_cases(group_name) for group_name in self.list_groups()}
 
     def select_cases(self, group_name: str, selection: str) -> list[dict[str, Any]]:
+        """Resolve ``--cases`` syntax into the concrete case list.
+
+        Supported forms are:
+
+        - ``all``
+        - comma-separated numeric ids, such as ``1,2,4``
+        - numeric ranges, such as ``1-4``
+        - exact case names, matched case-insensitively
+        """
         cases = self.get_cases(group_name)
         if selection.strip().lower() == "all":
             return cases

@@ -1,0 +1,11 @@
+extends: ../../basic.yaml
+
+output:
+  results_dir: benchmark_results/ablations/model_a
+
+search:
+  # Model A: gamma = 1/2, 2c**(1/gamma) = 6
+  gamma: 0.5
+  c: 6
+  # epsilon = 1: random child exploration
+  exploration_rate: 1.0

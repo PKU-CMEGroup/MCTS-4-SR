@@ -181,6 +181,12 @@ def materialize_expression(expression: str, coefficients: Sequence[float]) -> st
 
 
 def make_regressor_config(settings: BenchmarkSettings):
+    """Translate benchmark search settings into ``imcts.RegressorConfig``.
+
+    This is the handoff point where benchmark CLI/YAML parameters become the
+    actual search budget and exploration hyperparameters used by the core
+    regressor implementation.
+    """
     imcts = require_imcts()
 
     cfg = imcts.RegressorConfig()
@@ -208,6 +214,12 @@ def run_case(
     settings: BenchmarkSettings,
     prepared: PreparedCaseData,
 ) -> BenchmarkResult:
+    """Run one benchmark seed for one case and collect reporting fields.
+
+    The benchmark runner prepares the full dataset first, then we apply the
+    seeded train/test split here so repeated runs on the same case can differ
+    only by their benchmark seed.
+    """
     import numpy as np
 
     imcts = require_imcts()

@@ -1,0 +1,15 @@
+extends: ../../basic.yaml
+
+output:
+  results_dir: benchmark_results/ucb_extreme/model_f
+
+search:
+  # Model F: gamma = 1/8, 2c**(1/gamma) = 36
+  gamma: 0.125
+  c: 36
+  # p_s = 0: disable GP-based jump actions
+  gp_rate: 0.0
+  # epsilon = 0: disable random child exploration
+  exploration_rate: 0.0
+  # Unused when gp_rate = 0, kept explicit for clarity
+  mutation_rate: 0.0

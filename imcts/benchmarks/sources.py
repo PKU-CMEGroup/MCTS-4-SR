@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from .config import BenchmarkSettings
+from .defaults import DEFAULT_DATASETS_DIRNAME
 from .registry import BenchmarkGroup
 
 
@@ -40,6 +41,11 @@ class ExpressionSource:
         seed: int,
         workspace_root: Path,
     ) -> PreparedCaseData:
+        """Generate synthetic inputs/targets for symbolic benchmark cases.
+
+        ``settings.samples`` is a hard override. When it is absent, we scale
+        the case's bundled sample count by ``settings.sample_multiplier``.
+        """
         del workspace_root
         samples = settings.samples
         if samples is None:
@@ -64,6 +70,11 @@ class DatasetSource:
         seed: int,
         workspace_root: Path,
     ) -> PreparedCaseData:
+        """Load a black-box dataset case from disk.
+
+        The dataset root comes from ``settings.dataset_dir`` when provided,
+        otherwise we fall back to ``<workspace>/datasets``.
+        """
         del seed
         dataset_dir = resolve_dataset_dir(settings, workspace_root)
         X_total, y_total, feature_names = load_case_dataset(dataset_dir, case["name"], settings.label)
@@ -174,10 +185,11 @@ def dataset_candidates(dataset_dir: Path, case_name: str) -> list[Path]:
 
 
 def resolve_dataset_dir(settings: BenchmarkSettings, workspace_root: Path) -> Path:
+    """Resolve the dataset root for BlackBox benchmarks."""
     if settings.dataset_dir is not None:
         return Path(settings.dataset_dir)
 
-    candidate = workspace_root / "datasets"
+    candidate = workspace_root / DEFAULT_DATASETS_DIRNAME
     if candidate.exists():
         return candidate
 

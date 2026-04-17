@@ -1,26 +1,23 @@
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$separatorIndex = [Array]::IndexOf($args, "--")
+$Groups = @()
+$BenchmarkArgs = @()
+$parsingBenchmarkArgs = $false
 
-if ($separatorIndex -ge 0) {
-    if ($separatorIndex -gt 0) {
-        $Groups = @($args[0..($separatorIndex - 1)])
-    }
-    else {
-        $Groups = @()
+foreach ($arg in $args) {
+    if (-not $parsingBenchmarkArgs -and $arg -eq "--") {
+        $parsingBenchmarkArgs = $true
+        continue
     }
 
-    if ($separatorIndex + 1 -lt $args.Count) {
-        $BenchmarkArgs = @($args[($separatorIndex + 1)..($args.Count - 1)])
+    if (-not $parsingBenchmarkArgs -and [string]$arg -notlike "--*") {
+        $Groups += $arg
+        continue
     }
-    else {
-        $BenchmarkArgs = @()
-    }
-}
-else {
-    $Groups = @($args)
-    $BenchmarkArgs = @()
+
+    $parsingBenchmarkArgs = $true
+    $BenchmarkArgs += $arg
 }
 
 Push-Location $repoRoot
@@ -36,7 +33,7 @@ try {
     foreach ($group in $Groups) {
         Write-Host ""
         Write-Host "=== Running benchmark group: $group ==="
-        & python -m imcts.benchmarks --group $group --split-by-case @BenchmarkArgs
+        & python -m imcts.benchmarks --group $group @BenchmarkArgs
         if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
         }

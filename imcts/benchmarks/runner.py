@@ -1,4 +1,14 @@
-"""Unified benchmark runner entry point."""
+"""Unified benchmark runner entry point.
+
+The execution flow is:
+
+1. Parse CLI arguments
+2. Resolve the benchmark group and selected cases
+3. Load YAML, then merge CLI/YAML/defaults into ``BenchmarkSettings``
+4. Prepare case data through the source adapter
+5. Run each ``(case, seed)`` pair, sequentially or in parallel
+6. Write one CSV per case under the resolved output directory
+"""
 
 from __future__ import annotations
 
@@ -14,7 +24,7 @@ from .cli import parse_args
 from .config import BenchmarkSettings, build_settings, load_yaml_resource
 from .registry import BenchmarkRegistry, load_bundled_registry, print_available_cases
 from .sources import build_source, resolve_dataset_dir
-from .writer import case_output_path, combined_output_path, split_output_dir, write_csv
+from .writer import case_output_path, split_output_dir, write_csv
 
 
 def physical_core_count() -> int:
@@ -96,10 +106,8 @@ def list_requested_groups(args, registry: BenchmarkRegistry, forced_group: str |
     return 0
 
 
-def resolve_output_path(args, group_name: str, workspace_root: Path) -> Path:
-    if args.split_by_case:
-        return split_output_dir(group_name, args.output, workspace_root)
-    return combined_output_path(group_name, args.output, workspace_root)
+def resolve_output_path(args, settings, group_name: str, workspace_root: Path) -> Path:
+    return split_output_dir(group_name, args.output, settings.results_dir, workspace_root)
 
 
 def _run_sequential(
@@ -108,12 +116,18 @@ def _run_sequential(
     source,
     group_name: str,
     workspace_root: Path,
+    output_dir: Path,
     wall_time_limit_sec: float | None,
     wall_time_start: float,
 ) -> list[executor.BenchmarkResult]:
-    """Original sequential execution path."""
+    """Original sequential execution path.
+
+    The optional wall-clock limit is enforced only in this path. Parallel
+    execution currently runs every submitted task to completion.
+    """
     rows: list[executor.BenchmarkResult] = []
     for case in selected_cases:
+        case_rows: list[executor.BenchmarkResult] = []
         for run_index in range(settings.runs):
             if wall_time_limit_sec is not None and time.perf_counter() - wall_time_start > wall_time_limit_sec:
                 print(f"stopping        : reached wall-clock limit before {case['name']} run={run_index}")
@@ -123,7 +137,13 @@ def _run_sequential(
             prepared = source.prepare(case, settings, seed, workspace_root)
             result = executor.run_case(group_name, case, run_index, seed, settings, prepared)
             rows.append(result)
+            case_rows.append(result)
             print(_format_result(result))
+
+        if case_rows:
+            case_path = case_output_path(output_dir, group_name, case)
+            write_csv(case_rows, case_path)
+            print(f"wrote {len(case_rows)} rows to {case_path}")
     return rows
 
 
@@ -132,10 +152,14 @@ def _run_parallel(
     settings: BenchmarkSettings,
     group_name: str,
     workspace_root: Path,
+    output_dir: Path,
     num_workers: int,
 ) -> list[executor.BenchmarkResult]:
-    """Parallel execution: each (case, seed) pair runs in its own process."""
+    """Parallel execution: each ``(case, seed)`` pair runs in its own process."""
     tasks: list[tuple[str, dict, int, int, BenchmarkSettings, str, Path]] = []
+    cases_by_name = {case["name"]: case for case in selected_cases}
+    case_rows: dict[str, list[executor.BenchmarkResult]] = {case["name"]: [] for case in selected_cases}
+    remaining_runs = {case["name"]: settings.runs for case in selected_cases}
     for case in selected_cases:
         for run_index in range(settings.runs):
             seed = executor.seed_for_run(settings.seed_start, run_index)
@@ -147,7 +171,16 @@ def _run_parallel(
         for future in as_completed(futures):
             result = future.result()
             results.append(result)
+            case_name = result.case_name
+            case_rows[case_name].append(result)
+            remaining_runs[case_name] -= 1
             print(_format_result(result))
+
+            if remaining_runs[case_name] == 0:
+                finished_rows = sorted(case_rows[case_name], key=lambda row: row.run)
+                case_path = case_output_path(output_dir, group_name, cases_by_name[case_name])
+                write_csv(finished_rows, case_path)
+                print(f"wrote {len(finished_rows)} rows to {case_path}")
 
     results.sort(key=lambda r: (r.case_name, r.run))
     return results
@@ -158,6 +191,11 @@ def main(
     workspace_root: Path | None = None,
     forced_group: str | None = None,
 ) -> int:
+    """Run the benchmark CLI entry point.
+
+    ``forced_group`` is used by specialized entry points that pin the group and
+    reject conflicting ``--group`` values from the CLI.
+    """
     args = parse_args(argv)
     workspace_root = workspace_root or Path.cwd()
     registry = load_bundled_registry()
@@ -179,11 +217,8 @@ def main(
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     source = build_source(group)
-    output = resolve_output_path(args, group_name, workspace_root)
-    if args.split_by_case:
-        output.mkdir(parents=True, exist_ok=True)
-    else:
-        output.parent.mkdir(parents=True, exist_ok=True)
+    output = resolve_output_path(args, settings, group_name, workspace_root)
+    output.mkdir(parents=True, exist_ok=True)
 
     num_workers = args.workers if args.workers is not None else physical_core_count()
     num_workers = max(1, num_workers)
@@ -192,6 +227,11 @@ def main(
     print(f"cases           : {', '.join(case['name'] for case in selected_cases)}")
     print(f"runs per case   : {settings.runs}")
     print(f"ops             : {','.join(settings.ops)}")
+    print(f"c               : {settings.c}")
+    print(f"gamma           : {settings.gamma}")
+    print(f"gp_rate         : {settings.gp_rate}")
+    print(f"mutation_rate   : {settings.mutation_rate}")
+    print(f"exploration_rate: {settings.exploration_rate}")
     if settings.source_type == "expression":
         print(f"sample_multiplier: {settings.sample_multiplier}")
     print(f"test_ratio      : {settings.test_ratio}")
@@ -202,6 +242,8 @@ def main(
     if settings.max_wall_time_hours is not None:
         print(f"max_wall_time_h : {settings.max_wall_time_hours}")
     print(f"workers         : {num_workers}")
+    if settings.results_dir is not None and args.output is None:
+        print(f"results_root    : {settings.results_dir}")
     print(f"output          : {output}")
 
     wall_time_start = time.perf_counter()
@@ -211,26 +253,16 @@ def main(
     if num_workers <= 1:
         rows = _run_sequential(
             selected_cases, settings, source, group_name, workspace_root,
+            output,
             wall_time_limit_sec, wall_time_start,
         )
     else:
         rows = _run_parallel(
-            selected_cases, settings, group_name, workspace_root, num_workers,
+            selected_cases, settings, group_name, workspace_root, output, num_workers,
         )
 
-    if args.split_by_case:
-        for case in selected_cases:
-            case_rows = [r for r in rows if r.case_name == case["name"]]
-            if case_rows:
-                cp = case_output_path(output, group_name, case)
-                write_csv(case_rows, cp)
-                print(f"wrote {len(case_rows)} rows to {cp}")
-    else:
-        if rows:
-            write_csv(rows, output)
-            print(f"wrote {len(rows)} rows to {output}")
-        else:
-            print("no rows written : no runs completed")
+    if not rows:
+        print("no rows written : no runs completed")
 
     elapsed = time.perf_counter() - wall_time_start
     print(f"total wall time : {elapsed:.1f}s")

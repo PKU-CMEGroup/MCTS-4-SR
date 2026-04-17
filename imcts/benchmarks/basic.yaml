@@ -1,5 +1,7 @@
 runs: 100
 seed_start: 0
+output:
+  results_dir: benchmark_results
 data:
   samples:
   sample_multiplier: 2.0
@@ -13,11 +15,11 @@ search:
   max_constants: 10
   lm_iterations: 50
   K: 500
-  c: 4.0
+  c: 6.0
   gamma: 0.5
   gp_rate: 0.5
   mutation_rate: 0.1
-  exploration_rate: 0.2
+  exploration_rate: 0.1
   succ_error_tol: 1.0e-6
   max_evals: 2000000
 runtime:
