@@ -11,4 +11,3 @@ dist/
 benchmark_results/
 datasets/
 .pytest_cache
-slurm_scripts/
