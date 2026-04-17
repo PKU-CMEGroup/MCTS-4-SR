@@ -39,4 +39,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--exploration-rate", type=float, default=None)
     parser.add_argument("--succ-error-tol", type=float, default=None)
     parser.add_argument("--max-wall-time-hours", type=float, default=None)
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of parallel worker processes for independent seed runs. "
+        "Defaults to physical core count. Use 1 to disable parallelism.",
+    )
     return parser.parse_args(argv)
