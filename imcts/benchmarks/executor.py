@@ -57,6 +57,7 @@ class BenchmarkResult:
     max_constants: int
     max_evals: int
     lm_iterations: int
+    max_tree_nodes: int
     test_ratio: float
 
     def to_row(self) -> dict[str, Any]:
@@ -90,6 +91,7 @@ class BenchmarkResult:
             "max_constants": self.max_constants,
             "max_evals": self.max_evals,
             "lm_iterations": self.lm_iterations,
+            "max_tree_nodes": self.max_tree_nodes,
             "test_ratio": self.test_ratio,
         }
 
@@ -197,6 +199,7 @@ def make_regressor_config(settings: BenchmarkSettings):
     cfg.max_evals = settings.max_evals
     cfg.lm_iterations = settings.lm_iterations
     cfg.K = settings.K
+    cfg.max_tree_nodes = settings.max_tree_nodes
     cfg.c = settings.c
     cfg.gamma = settings.gamma
     cfg.gp_rate = settings.gp_rate
@@ -273,5 +276,6 @@ def run_case(
         max_constants=settings.max_constants,
         max_evals=settings.max_evals,
         lm_iterations=settings.lm_iterations,
+        max_tree_nodes=settings.max_tree_nodes,
         test_ratio=float(settings.test_ratio),
     )

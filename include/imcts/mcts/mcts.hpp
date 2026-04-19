@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 #include <limits>
+#include <span>
 #include "imcts/core/types.hpp"
 #include "imcts/mcts/node.hpp"
 #include "imcts/evaluator/evaluator.hpp"
@@ -13,6 +14,7 @@ namespace imcts {
 
 struct MCTSConfig {
     int   K                = 500;
+    int   max_tree_nodes   = 100000;
     float c                = 4.0f;
     float gamma            = 0.5f;
     float gp_rate          = 0.2f;
@@ -35,18 +37,22 @@ public:
     int   total_nodes()  const { return total_nodes_; }
 
     std::vector<uint8_t> best_path() const {
-        return root_->path_queue.best().path;
+        return root_->path_queue.best().path.to_vector();
     }
 
 private:
     float rollout_once(ExpTree& state,
-                       const std::vector<uint8_t>* given_path,
+                       RandomGenerator& rng,
+                       std::vector<uint8_t>& out_path);
+    float rollout_once(ExpTree& state,
+                       std::span<uint8_t const> given_path,
                        RandomGenerator& rng,
                        std::vector<uint8_t>& out_path);
 
     float perform_mutation(MCTSNode* node, ExpTree& state, RandomGenerator& rng);
     float perform_crossover(MCTSNode* node, ExpTree& state, RandomGenerator& rng);
     void  update_terminal_status(MCTSNode* node);
+    bool  can_expand() const;
 
     MCTSNode* expand_node(MCTSNode* node, ExpTree& state, RandomGenerator& rng);
 

@@ -33,6 +33,7 @@ from .defaults import (
     DEFAULT_LM_ITERATIONS,
     DEFAULT_MAX_CONSTANTS,
     DEFAULT_MAX_DEPTH,
+    DEFAULT_MAX_TREE_NODES,
     DEFAULT_MAX_UNARY,
     DEFAULT_MUTATION_RATE,
     DEFAULT_RESULTS_DIRNAME,
@@ -66,6 +67,7 @@ class SearchSettings:
     max_constants: int
     lm_iterations: int
     K: int
+    max_tree_nodes: int
     c: float
     gamma: float
     gp_rate: float
@@ -152,6 +154,10 @@ class BenchmarkSettings:
     @property
     def c(self) -> float:
         return self.search.c
+
+    @property
+    def max_tree_nodes(self) -> int:
+        return self.search.max_tree_nodes
 
     @property
     def gamma(self) -> float:
@@ -316,6 +322,9 @@ def build_settings(
         max_constants=int(pick(args.max_constants, nested_get(config, "search", "max_constants"), DEFAULT_MAX_CONSTANTS)),
         lm_iterations=int(pick(args.lm_iterations, nested_get(config, "search", "lm_iterations"), DEFAULT_LM_ITERATIONS)),
         K=int(pick(args.K, nested_get(config, "search", "K"), DEFAULT_K)),
+        max_tree_nodes=int(
+            pick(args.max_tree_nodes, nested_get(config, "search", "max_tree_nodes"), DEFAULT_MAX_TREE_NODES)
+        ),
         c=float(pick(args.c, nested_get(config, "search", "c"), DEFAULT_C)),
         gamma=float(pick(args.gamma, nested_get(config, "search", "gamma"), DEFAULT_GAMMA)),
         gp_rate=float(pick(args.gp_rate, nested_get(config, "search", "gp_rate"), DEFAULT_GP_RATE)),

@@ -19,6 +19,7 @@ FitResult Regressor::fit(std::optional<uint64_t> seed) {
 
     MCTSConfig mcts_cfg{
         .K                = cfg_.K,
+        .max_tree_nodes   = cfg_.max_tree_nodes,
         .c                = cfg_.c,
         .gamma            = cfg_.gamma,
         .gp_rate          = cfg_.gp_rate,

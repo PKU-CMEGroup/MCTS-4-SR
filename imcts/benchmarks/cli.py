@@ -54,6 +54,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-constants", type=int, default=None)
     parser.add_argument("--lm-iterations", type=int, default=None)
     parser.add_argument("--K", type=int, default=None)
+    parser.add_argument("--max-tree-nodes", type=int, default=None)
     parser.add_argument("--c", type=float, default=None)
     parser.add_argument("--gamma", type=float, default=None)
     parser.add_argument("--gp-rate", type=float, default=None)

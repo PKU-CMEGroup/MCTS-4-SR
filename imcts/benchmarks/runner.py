@@ -227,6 +227,8 @@ def main(
     print(f"cases           : {', '.join(case['name'] for case in selected_cases)}")
     print(f"runs per case   : {settings.runs}")
     print(f"ops             : {','.join(settings.ops)}")
+    print(f"K               : {settings.K}")
+    print(f"max_tree_nodes  : {settings.max_tree_nodes}")
     print(f"c               : {settings.c}")
     print(f"gamma           : {settings.gamma}")
     print(f"gp_rate         : {settings.gp_rate}")

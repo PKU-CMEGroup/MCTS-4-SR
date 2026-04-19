@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 #include <cmath>
+#include <span>
 #include "imcts/core/types.hpp"
 #include "imcts/core/exp_queue.hpp"
 #include "imcts/core/exp_tree.hpp"
@@ -73,26 +74,26 @@ struct MCTSNode {
     }
 
     // Propagate (reward, path) upward through the tree
-    void backpropagate(std::vector<uint8_t> path, float reward) {
+    void backpropagate(std::span<const uint8_t> path, float reward) {
         std::size_t prefix_len = 0;
         for (MCTSNode* cur = this; cur != nullptr && cur->parent != nullptr; cur = cur->parent) {
             ++prefix_len;
         }
 
-        std::vector<uint8_t> full_path(prefix_len + path.size());
-        std::copy(path.begin(), path.end(), full_path.begin() + static_cast<std::ptrdiff_t>(prefix_len));
+        auto full_path = std::make_shared<std::vector<uint8_t>>(prefix_len + path.size());
+        std::copy(path.begin(), path.end(), full_path->begin() + static_cast<std::ptrdiff_t>(prefix_len));
 
         MCTSNode* cur = this;
         std::size_t index = prefix_len;
         while (cur != nullptr && cur->parent != nullptr) {
-            full_path[--index] = cur->move;
+            (*full_path)[--index] = cur->move;
             cur = cur->parent;
         }
 
         cur = this;
         std::size_t start = prefix_len;
         while (cur != nullptr) {
-            if (!cur->path_queue.append(std::span<const uint8_t>(full_path).subspan(start), reward)) {
+            if (!cur->path_queue.append_shared(full_path, start, reward)) {
                 break;
             }
             if (cur->parent != nullptr) {
@@ -103,19 +104,23 @@ struct MCTSNode {
     }
 
     // Propagate downward: update children along a known good path
-    void propagate(const std::vector<uint8_t>& path, float reward) {
+    void propagate(SharedPath path, float reward) {
         MCTSNode* cur = this;
-        auto remaining = std::span<const uint8_t>(path);
+        auto remaining = std::move(path);
         while (!remaining.empty()) {
             MCTSNode* found = nullptr;
             for (auto& ch : cur->children) {
-                if (ch->move == remaining.front()) { found = ch.get(); break; }
+                if (ch->move == remaining[0]) { found = ch.get(); break; }
             }
             if (!found) break;
-            remaining = remaining.subspan(1);
+            remaining = remaining.suffix(1);
             found->path_queue.append(remaining, reward);
             cur = found;
         }
+    }
+
+    void propagate(std::span<const uint8_t> path, float reward) {
+        propagate(SharedPath(path), reward);
     }
 };
 

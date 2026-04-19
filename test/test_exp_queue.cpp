@@ -1,6 +1,8 @@
 // test/test_exp_queue.cpp
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <memory>
+#include <vector>
 
 #include "imcts/core/exp_queue.hpp"
 
@@ -45,4 +47,17 @@ TEST_CASE("ExpQueue random_sample returns valid entry") {
     imcts::RandomGenerator rng{42};
     const auto& entry = q.random_sample(rng);
     REQUIRE(entry.reward > 0.0f);
+}
+
+TEST_CASE("ExpQueue shared paths keep suffix views without copying") {
+    imcts::ExpQueue q(4);
+    auto storage = std::make_shared<const std::vector<uint8_t>>(std::vector<uint8_t>{4, 5, 6, 7});
+
+    REQUIRE(q.append_shared(storage, 1, 0.6f));
+    REQUIRE(q.append_shared(storage, 2, 0.5f));
+
+    const auto& best = q.best();
+    REQUIRE(best.path.size() == 3);
+    REQUIRE(best.path[0] == 5);
+    REQUIRE(best.path.to_vector() == std::vector<uint8_t>{5, 6, 7});
 }

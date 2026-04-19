@@ -25,6 +25,7 @@ struct RegressorConfig {
     int   max_constants    = 999;
     int   lm_iterations    = 50;
     int   max_evals        = 2000000;
+    int   max_tree_nodes   = 300000;
     float succ_error_tol   = 1e-6f;
 };
 

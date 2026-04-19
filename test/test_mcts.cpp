@@ -65,3 +65,33 @@ TEST_CASE("MCTS finds x0 expression in <500 evals") {
     }
     REQUIRE(best > 0.95f);
 }
+
+TEST_CASE("MCTS total nodes respect configured cap") {
+    int n = 20;
+    std::vector<float> x0(n), y(n);
+    for (int i = 0; i < n; i++) { x0[i] = static_cast<float>(i); y[i] = x0[i]; }
+    imcts::EvaluatorConfig cfg{{x0}, y, 30};
+
+    auto pset = imcts::make_primitive_set({"+", "-", "*", "sin"}, 1);
+    imcts::Evaluator evaluator(pset, cfg);
+    imcts::GPManager gp_mgr(pset);
+    imcts::MCTSConfig mcts_cfg{
+        .K = 20,
+        .max_tree_nodes = 25,
+        .c = 4.0f,
+        .gamma = 0.5f,
+        .gp_rate = 0.2f,
+        .mutation_rate = 0.2f,
+        .exploration_rate = 0.2f
+    };
+
+    imcts::MCTS mcts(pset, evaluator, gp_mgr, mcts_cfg);
+    imcts::RandomGenerator rng{7};
+    imcts::ExpTree tree(pset, 4, 2, 0);
+
+    for (int i = 0; i < 200; ++i) {
+        (void)mcts.search(tree, rng);
+    }
+
+    REQUIRE(mcts.total_nodes() <= mcts_cfg.max_tree_nodes);
+}

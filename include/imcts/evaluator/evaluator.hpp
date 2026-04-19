@@ -23,9 +23,6 @@ public:
     float evaluate(std::span<uint8_t const> prefix, RandomGenerator& rng);
     Tree  build_optimized_tree(std::span<uint8_t const> prefix);
 
-    int  cache_hits() const { return cache_hits_; }
-    void cache_clear() { bridge_.cache_clear(); cache_hits_ = 0; }
-
 private:
     float compute_reward(const Eigen::VectorXd& y_pred) const;
 
@@ -38,7 +35,6 @@ private:
     Eigen::VectorXd target_values_;
     double  sigma_;
     int     lm_iterations_;
-    int     cache_hits_ = 0;
 };
 
 } // namespace imcts

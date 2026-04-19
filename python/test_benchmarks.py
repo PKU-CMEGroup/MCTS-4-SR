@@ -46,6 +46,7 @@ def make_args(**overrides) -> argparse.Namespace:
         "max_constants": None,
         "lm_iterations": None,
         "K": None,
+        "max_tree_nodes": None,
         "c": None,
         "gamma": None,
         "gp_rate": None,
@@ -78,11 +79,17 @@ def test_registry_group_metadata_and_cases():
 def test_build_settings_prefers_cli_over_yaml_and_defaults():
     registry = load_bundled_registry()
     group = registry.get_group("Nguyen")
-    args = make_args(runs=3, ops="sin,cos", max_evals=1234, test_ratio=0.4)
+    args = make_args(
+        runs=3,
+        ops="sin,cos",
+        max_evals=1234,
+        max_tree_nodes=4321,
+        test_ratio=0.4,
+    )
     raw_config = {
         "runs": 8,
         "data": {"test_ratio": 0.5},
-        "search": {"ops": ["+", "-"], "max_evals": 999},
+        "search": {"ops": ["+", "-"], "max_evals": 999, "max_tree_nodes": 9999},
     }
 
     settings = build_settings(args, group, raw_config)
@@ -90,6 +97,7 @@ def test_build_settings_prefers_cli_over_yaml_and_defaults():
     assert settings.runs == 3
     assert settings.ops == ["sin", "cos"]
     assert settings.max_evals == 1234
+    assert settings.max_tree_nodes == 4321
     assert settings.test_ratio == 0.4
 
 
