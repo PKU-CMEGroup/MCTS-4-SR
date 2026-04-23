@@ -36,6 +36,7 @@ def make_args(**overrides) -> argparse.Namespace:
         "dataset_dir": None,
         "label": None,
         "test_ratio": None,
+        "results_dir": None,
         "output": None,
         "split_by_case": False,
         "list": False,
@@ -53,6 +54,7 @@ def make_args(**overrides) -> argparse.Namespace:
         "exploration_rate": None,
         "succ_error_tol": None,
         "max_wall_time_hours": None,
+        "workers": None,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -161,22 +163,24 @@ def test_runner_smoke_for_nguyen_and_blackbox(monkeypatch: pytest.MonkeyPatch, t
     fake_imcts = SimpleNamespace(RegressorConfig=FakeConfig, Regressor=FakeRegressor)
     monkeypatch.setattr("imcts.benchmarks.executor.require_imcts", lambda: fake_imcts)
 
-    nguyen_output = tmp_path / "nguyen.csv"
+    nguyen_output = tmp_path / "nguyen"
     assert runner.main(["--group", "Nguyen", "--cases", "1", "--runs", "1", "--output", str(nguyen_output)], workspace_root=tmp_path) == 0
-    assert nguyen_output.exists()
+    nguyen_csv = nguyen_output / "nguyen_001_nguyen-1.csv"
+    assert nguyen_csv.exists()
 
     dataset_name = load_bundled_registry().get_cases("BlackBox")[0]["name"]
     dataset_file = tmp_path / "datasets" / dataset_name / f"{dataset_name}.csv"
     dataset_file.parent.mkdir(parents=True)
     dataset_file.write_text("x0,target\n1,1\n2,2\n3,3\n4,4\n", encoding="utf-8")
 
-    blackbox_output = tmp_path / "blackbox.csv"
+    blackbox_output = tmp_path / "blackbox"
     assert runner.main(["--group", "BlackBox", "--cases", "1", "--runs", "1", "--output", str(blackbox_output)], workspace_root=tmp_path) == 0
-    assert blackbox_output.exists()
+    blackbox_csv = blackbox_output / "blackbox_001_1027-esl.csv"
+    assert blackbox_csv.exists()
 
-    with nguyen_output.open("r", encoding="utf-8", newline="") as f:
+    with nguyen_csv.open("r", encoding="utf-8", newline="") as f:
         nguyen_rows = list(csv.DictReader(f))
-    with blackbox_output.open("r", encoding="utf-8", newline="") as f:
+    with blackbox_csv.open("r", encoding="utf-8", newline="") as f:
         blackbox_rows = list(csv.DictReader(f))
 
     assert len(nguyen_rows) == 1
