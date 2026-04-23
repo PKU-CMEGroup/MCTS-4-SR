@@ -35,21 +35,6 @@ TEST_CASE("Evaluator: x0+x1 expression gets reward close to 1") {
     REQUIRE(reward > 0.99f);
 }
 
-TEST_CASE("Evaluator: cache deduplication") {
-    auto pset = imcts::make_primitive_set({"+", "-"}, 1);
-    std::vector<std::vector<float>> x = {std::vector<float>(5, 1.0f)};
-    std::vector<float> y(5, 1.0f);
-    imcts::EvaluatorConfig cfg{x, y, 10};
-    imcts::Evaluator eval(pset, cfg);
-
-    std::vector<uint8_t> prefix = {pset.op_index("x0")};
-    imcts::RandomGenerator rng{42};
-    float r1 = eval.evaluate(prefix, rng);
-    float r2 = eval.evaluate(prefix, rng);
-    REQUIRE(r1 == Catch::Approx(r2));
-    REQUIRE(eval.cache_hits() == 1);
-}
-
 TEST_CASE("Evaluator: invalid numeric expressions return zero reward") {
     auto pset = imcts::make_primitive_set({"/", "log"}, 1);
     std::vector<std::vector<float>> x = {std::vector<float>(5, 0.0f)};

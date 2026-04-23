@@ -33,7 +33,6 @@ if(NOT TARGET Eigen3::Eigen)
 endif()
 
 option(IMCTS_BUILD_PYTHON "Build Python bindings" ON)
-option(IMCTS_ENABLE_PROFILING "Enable lightweight internal profiling counters for hotspot analysis" OFF)
 if(IMCTS_BUILD_PYTHON)
     set(PYBIND11_FINDPYTHON ON)
     find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
@@ -63,7 +62,6 @@ endif()
 add_library(imcts_core STATIC
     source/core/exp_tree.cpp
     source/core/exp_queue.cpp
-    source/core/profiling.cpp
     source/core/bridge.cpp
     source/core/tree.cpp
     source/eval/interpreter.cpp
@@ -78,9 +76,6 @@ target_include_directories(imcts_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 target_link_libraries(imcts_core PUBLIC Eigen3::Eigen)
-if(IMCTS_ENABLE_PROFILING)
-    target_compile_definitions(imcts_core PUBLIC IMCTS_ENABLE_PROFILING)
-endif()
 if(OpenMP_CXX_FOUND)
     target_link_libraries(imcts_core PUBLIC OpenMP::OpenMP_CXX)
 endif()
