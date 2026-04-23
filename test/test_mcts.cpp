@@ -1,6 +1,7 @@
 // test/test_mcts.cpp
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <array>
 #include "imcts/core/symbol.hpp"
 #include "imcts/core/exp_queue.hpp"
 #include "imcts/mcts/node.hpp"
@@ -28,7 +29,8 @@ TEST_CASE("MCTSNode backpropagate updates path_queue upward") {
     imcts::MCTSNode root(nullptr, 255, 3);
     imcts::MCTSNode child(&root, 0, 3);
 
-    child.backpropagate({1, 2}, 0.8f);
+    const std::array<uint8_t, 2> path{1, 2};
+    child.backpropagate(path, 0.8f);
     REQUIRE(child.path_queue.best().reward == Catch::Approx(0.8f));
     REQUIRE(root.path_queue.best().reward == Catch::Approx(0.8f));
     REQUIRE(root.path_queue.best().path.size() == 3);
