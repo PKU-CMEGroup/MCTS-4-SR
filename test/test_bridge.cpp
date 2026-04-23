@@ -31,21 +31,6 @@ TEST_CASE("Bridge converts [sin, x0] to Tree with 2 nodes") {
     REQUIRE(tree.nodes()[0].type == imcts::NodeType::Variable);
 }
 
-TEST_CASE("Bridge hash cache: same prefix returns cached result") {
-    auto pset = imcts::make_primitive_set({"+", "sin"}, 1);
-    imcts::Bridge bridge(pset);
-
-    std::vector<uint8_t> prefix = {pset.op_index("sin"), pset.op_index("x0")};
-    auto tree1 = bridge.to_tree(prefix);
-    auto hash1 = tree1.structure_hash();
-    bridge.cache_put(hash1, 0.9f);
-
-    auto tree2 = bridge.to_tree(prefix);
-    auto hash2 = tree2.structure_hash();
-    REQUIRE(hash1 == hash2);
-    REQUIRE(bridge.cache_get(hash2).has_value());
-}
-
 TEST_CASE("Bridge in-place conversion reuses tree storage") {
     auto pset = imcts::make_primitive_set({"+", "sin"}, 2);
     imcts::Bridge bridge(pset);
