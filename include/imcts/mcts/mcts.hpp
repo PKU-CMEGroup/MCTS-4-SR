@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 #include <limits>
+#include <span>
 #include "imcts/core/types.hpp"
 #include "imcts/mcts/node.hpp"
 #include "imcts/evaluator/evaluator.hpp"
@@ -35,12 +36,15 @@ public:
     int   total_nodes()  const { return total_nodes_; }
 
     std::vector<uint8_t> best_path() const {
-        return root_->path_queue.best().path;
+        return root_->path_queue.best().path.to_vector();
     }
 
 private:
     float rollout_once(ExpTree& state,
-                       const std::vector<uint8_t>* given_path,
+                       RandomGenerator& rng,
+                       std::vector<uint8_t>& out_path);
+    float rollout_once(ExpTree& state,
+                       std::span<uint8_t const> given_path,
                        RandomGenerator& rng,
                        std::vector<uint8_t>& out_path);
 
