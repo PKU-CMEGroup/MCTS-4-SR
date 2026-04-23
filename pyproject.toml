@@ -73,4 +73,5 @@ include = [
 ]
 
 [tool.pytest.ini_options]
+addopts = "-p no:hydra_pytest"
 testpaths = ["python"]

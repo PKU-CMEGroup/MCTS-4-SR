@@ -23,6 +23,7 @@ from imcts.benchmarks import runner
 from imcts.benchmarks.config import build_settings, load_yaml_resource
 from imcts.benchmarks.registry import load_bundled_registry
 from imcts.benchmarks.sources import DatasetSource, ExpressionSource
+from imcts.benchmarks.writer import case_output_path
 
 
 def make_args(**overrides) -> argparse.Namespace:
@@ -36,6 +37,7 @@ def make_args(**overrides) -> argparse.Namespace:
         "dataset_dir": None,
         "label": None,
         "test_ratio": None,
+        "results_dir": None,
         "output": None,
         "split_by_case": False,
         "list": False,
@@ -53,6 +55,7 @@ def make_args(**overrides) -> argparse.Namespace:
         "exploration_rate": None,
         "succ_error_tol": None,
         "max_wall_time_hours": None,
+        "workers": None,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -161,17 +164,22 @@ def test_runner_smoke_for_nguyen_and_blackbox(monkeypatch: pytest.MonkeyPatch, t
     fake_imcts = SimpleNamespace(RegressorConfig=FakeConfig, Regressor=FakeRegressor)
     monkeypatch.setattr("imcts.benchmarks.executor.require_imcts", lambda: fake_imcts)
 
-    nguyen_output = tmp_path / "nguyen.csv"
-    assert runner.main(["--group", "Nguyen", "--cases", "1", "--runs", "1", "--output", str(nguyen_output)], workspace_root=tmp_path) == 0
-    assert nguyen_output.exists()
+    nguyen_output_dir = tmp_path / "nguyen"
+    assert runner.main(["--group", "Nguyen", "--cases", "1", "--runs", "1", "--output", str(nguyen_output_dir)], workspace_root=tmp_path) == 0
 
     dataset_name = load_bundled_registry().get_cases("BlackBox")[0]["name"]
     dataset_file = tmp_path / "datasets" / dataset_name / f"{dataset_name}.csv"
     dataset_file.parent.mkdir(parents=True)
     dataset_file.write_text("x0,target\n1,1\n2,2\n3,3\n4,4\n", encoding="utf-8")
 
-    blackbox_output = tmp_path / "blackbox.csv"
-    assert runner.main(["--group", "BlackBox", "--cases", "1", "--runs", "1", "--output", str(blackbox_output)], workspace_root=tmp_path) == 0
+    blackbox_output_dir = tmp_path / "blackbox"
+    assert runner.main(["--group", "BlackBox", "--cases", "1", "--runs", "1", "--output", str(blackbox_output_dir)], workspace_root=tmp_path) == 0
+
+    nguyen_case = load_bundled_registry().get_cases("Nguyen")[0]
+    blackbox_case = load_bundled_registry().get_cases("BlackBox")[0]
+    nguyen_output = case_output_path(nguyen_output_dir, "Nguyen", nguyen_case)
+    blackbox_output = case_output_path(blackbox_output_dir, "BlackBox", blackbox_case)
+    assert nguyen_output.exists()
     assert blackbox_output.exists()
 
     with nguyen_output.open("r", encoding="utf-8", newline="") as f:
