@@ -51,18 +51,4 @@ void Bridge::to_tree(std::span<uint8_t const> prefix, Tree& out) const
     out.update_lengths();
 }
 
-std::optional<float> Bridge::cache_get(Hash hash) const {
-    auto it = cache_.find(hash);
-    if (it == cache_.end()) return std::nullopt;
-    return it->second;
-}
-
-void Bridge::cache_put(Hash hash, float reward) {
-    cache_[hash] = reward;
-}
-
-void Bridge::cache_clear() {
-    cache_.clear();
-}
-
 } // namespace imcts

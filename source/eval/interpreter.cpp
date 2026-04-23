@@ -1,8 +1,6 @@
 // source/eval/interpreter.cpp
 #include "imcts/eval/interpreter.hpp"
-#include "imcts/core/profiling.hpp"
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -176,41 +174,16 @@ Interpreter::evaluate_with_jacobian(const Tree& tree, const Dataset& ds, Range r
 
 void Interpreter::evaluate_with_jacobian(const Tree& tree, const Dataset& ds, Range range,
                                          InterpreterWorkspace& workspace) {
-#ifdef IMCTS_ENABLE_PROFILING
-    const auto t_total0 = std::chrono::steady_clock::now();
-    std::uint64_t prepare_ns = 0;
-    std::uint64_t child_map_ns = 0;
-    std::uint64_t buffer_setup_ns = 0;
-    std::uint64_t forward_ns = 0;
-    std::uint64_t reverse_ns = 0;
-    std::uint64_t writeback_ns = 0;
-#endif
     const auto& nodes = tree.nodes();
-    const int n = static_cast<int>(range.size);
     const int nn = static_cast<int>(nodes.size());
     int num_coeffs = count_coefficients(nodes);
 
-#ifdef IMCTS_ENABLE_PROFILING
-    const auto t_prepare0 = std::chrono::steady_clock::now();
-#endif
     workspace.prepare_jacobian(range.size, nodes.size(), static_cast<std::size_t>(num_coeffs));
-#ifdef IMCTS_ENABLE_PROFILING
-    prepare_ns = static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - t_prepare0).count());
-    const auto t_child_map0 = std::chrono::steady_clock::now();
-#endif
     const auto total = static_cast<Eigen::Index>(range.size);
     fill_child_map(nodes, std::span<std::array<int, 2>>(workspace.child_map_.data(), nodes.size()));
     const auto child_map = std::span<const std::array<int, 2>>(workspace.child_map_.data(), nodes.size());
     const auto num_batches = static_cast<int>((total + InterpreterWorkspace::kBatchSize - 1)
                                               / InterpreterWorkspace::kBatchSize);
-#ifdef IMCTS_ENABLE_PROFILING
-    child_map_ns = static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - t_child_map0).count());
-    const auto t_buffer0 = std::chrono::steady_clock::now();
-#endif
 
     int num_threads = 1;
 #ifdef _OPENMP
@@ -233,11 +206,6 @@ void Interpreter::evaluate_with_jacobian(const Tree& tree, const Dataset& ds, Ra
                                          static_cast<Eigen::Index>(nodes.size()));
         }
     }
-#ifdef IMCTS_ENABLE_PROFILING
-    buffer_setup_ns = static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - t_buffer0).count());
-#endif
 
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static) if (num_batches > 1) num_threads(num_threads)
@@ -255,10 +223,6 @@ void Interpreter::evaluate_with_jacobian(const Tree& tree, const Dataset& ds, Ra
             : adjoint_buffers[static_cast<std::size_t>(thread_id)];
         const Eigen::Index row0 = static_cast<Eigen::Index>(batch) * InterpreterWorkspace::kBatchSize;
         const Eigen::Index rem = std::min(InterpreterWorkspace::kBatchSize, total - row0);
-
-#ifdef IMCTS_ENABLE_PROFILING
-        const auto t_forward0 = std::chrono::steady_clock::now();
-#endif
         for (int idx = 0; idx < nn; ++idx) {
             const auto& node = nodes[idx];
             switch (node.arity) {
@@ -303,16 +267,6 @@ void Interpreter::evaluate_with_jacobian(const Tree& tree, const Dataset& ds, Ra
                 }
             }
         }
-#ifdef IMCTS_ENABLE_PROFILING
-        const auto forward_elapsed = static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - t_forward0).count());
-#ifdef _OPENMP
-#pragma omp atomic
-#endif
-        forward_ns += forward_elapsed;
-        const auto t_reverse0 = std::chrono::steady_clock::now();
-#endif
 
         adjoint.topRows(rem).setZero();
         adjoint.col(nn - 1).head(rem).setOnes();
@@ -384,16 +338,6 @@ void Interpreter::evaluate_with_jacobian(const Tree& tree, const Dataset& ds, Ra
                 }
             }
         }
-#ifdef IMCTS_ENABLE_PROFILING
-        const auto reverse_elapsed = static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - t_reverse0).count());
-#ifdef _OPENMP
-#pragma omp atomic
-#endif
-        reverse_ns += reverse_elapsed;
-        const auto t_writeback0 = std::chrono::steady_clock::now();
-#endif
 
         int col = 0;
         for (int i = 0; i < nn; ++i) {
@@ -402,33 +346,7 @@ void Interpreter::evaluate_with_jacobian(const Tree& tree, const Dataset& ds, Ra
             }
         }
         workspace.result_.segment(row0, rem) = values.col(nn - 1).head(rem).matrix();
-#ifdef IMCTS_ENABLE_PROFILING
-        const auto writeback_elapsed = static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - t_writeback0).count());
-#ifdef _OPENMP
-#pragma omp atomic
-#endif
-        writeback_ns += writeback_elapsed;
-#endif
     }
-
-#ifdef IMCTS_ENABLE_PROFILING
-    profiling::record_jacobian_call(
-        static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - t_total0).count()),
-        prepare_ns,
-        child_map_ns,
-        buffer_setup_ns,
-        forward_ns,
-        reverse_ns,
-        writeback_ns,
-        static_cast<std::uint64_t>(num_batches),
-        static_cast<std::uint64_t>(nn),
-        static_cast<std::uint64_t>(num_coeffs),
-        static_cast<std::uint64_t>(range.size));
-#endif
 }
 
 } // namespace imcts
