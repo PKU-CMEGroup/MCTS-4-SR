@@ -241,7 +241,7 @@ def run_case(
     y_pred_test = evaluate_expression(materialized, X_test)
     train_r2 = regression_r2(y_train, y_pred_train)
     test_r2 = regression_r2(y_test, y_pred_test)
-    simplified_expression, complexity = simplify_with_complexity(materialized, precision=4, threshold=1e-4)
+    simplified_expression, complexity = simplify_with_complexity(materialized, precision=4, threshold=1e-4, coefficient_threshold=1e-5)
 
     return BenchmarkResult(
         group=group_name,
