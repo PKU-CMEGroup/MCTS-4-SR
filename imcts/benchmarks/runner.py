@@ -23,7 +23,7 @@ from . import executor
 from .cli import parse_args
 from .config import BenchmarkSettings, build_settings, load_yaml_resource
 from .registry import BenchmarkRegistry, load_bundled_registry, print_available_cases
-from .sources import build_source, resolve_dataset_dir
+from .sources import build_source, inspect_case_dataset, resolve_dataset_dir
 from .writer import case_output_path, split_output_dir, write_csv
 
 
@@ -99,10 +99,36 @@ def resolve_group_name(args_group: str | None, forced_group: str | None) -> str:
     return forced_group or args_group or "Nguyen"
 
 
-def list_requested_groups(args, registry: BenchmarkRegistry, forced_group: str | None) -> int:
+def _list_case_annotations(args, registry: BenchmarkRegistry, selected_group: str | None, workspace_root: Path) -> dict[tuple[str, str], str]:
+    if selected_group not in (None, "BlackBox"):
+        return {}
+
+    group = registry.get_group("BlackBox")
+    config = load_yaml_resource(args.config, group.default_config_name)
+    settings = build_settings(args, group, config)
+    dataset_dir = settings.dataset_dir or workspace_root / "datasets"
+    if not dataset_dir.exists():
+        return {}
+
+    annotations: dict[tuple[str, str], str] = {}
+    for case in registry.get_cases("BlackBox"):
+        metadata = inspect_case_dataset(dataset_dir, case["name"], settings.label)
+        if metadata is None:
+            continue
+        train_n, test_n = executor.training_split_counts(metadata.samples, settings.test_ratio)
+        annotations[("BlackBox", case["name"])] = (
+            f"samples={metadata.samples} features={metadata.features} "
+            f"train_n={train_n} test_n={test_n}"
+        )
+    return annotations
+
+
+def list_requested_groups(args, registry: BenchmarkRegistry, forced_group: str | None, workspace_root: Path) -> int:
     if forced_group is not None and args.group is not None and args.group != forced_group:
         raise SystemExit(f"This entry point is fixed to group {forced_group!r}, but got --group={args.group!r}.")
-    print_available_cases(registry, selected_group=forced_group)
+    selected_group = forced_group or args.group
+    annotations = _list_case_annotations(args, registry, selected_group, workspace_root)
+    print_available_cases(registry, selected_group=selected_group, case_annotations=annotations)
     return 0
 
 
@@ -201,7 +227,7 @@ def main(
     registry = load_bundled_registry()
 
     if args.list:
-        return list_requested_groups(args, registry, forced_group)
+        return list_requested_groups(args, registry, forced_group, workspace_root)
 
     group_name = resolve_group_name(args.group, forced_group)
     try:

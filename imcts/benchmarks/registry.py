@@ -92,17 +92,24 @@ def load_json_resource(name: str) -> dict[str, Any]:
         return json.load(f)
 
 
-def print_available_cases(registry: BenchmarkRegistry, selected_group: str | None = None) -> None:
+def print_available_cases(
+    registry: BenchmarkRegistry,
+    selected_group: str | None = None,
+    case_annotations: dict[tuple[str, str], str] | None = None,
+) -> None:
+    case_annotations = case_annotations or {}
     for group_name in registry.list_groups():
         if selected_group is not None and group_name != selected_group:
             continue
         print(f"{group_name}:")
         for case in registry.get_cases(group_name):
             expression = case.get("expression")
+            annotation = case_annotations.get((group_name, case["name"]), "")
+            suffix = f"  {annotation}" if annotation else ""
             if expression:
-                print(f"  {case['id']:>3}: {case['name']}  y = {expression}")
+                print(f"  {case['id']:>3}: {case['name']}  y = {expression}{suffix}")
             else:
-                print(f"  {case['id']:>3}: {case['name']}")
+                print(f"  {case['id']:>3}: {case['name']}{suffix}")
 
 
 def load_bundled_registry() -> BenchmarkRegistry:

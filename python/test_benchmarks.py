@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 import imcts
+import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_IMCTS = REPO_ROOT / "imcts"
@@ -19,10 +20,10 @@ import imcts.benchmarks as benchmarks_pkg
 if str(LOCAL_BENCHMARKS) not in benchmarks_pkg.__path__:
     benchmarks_pkg.__path__.insert(0, str(LOCAL_BENCHMARKS))
 
-from imcts.benchmarks import runner
+from imcts.benchmarks import executor, runner
 from imcts.benchmarks.config import build_settings, load_yaml_resource
 from imcts.benchmarks.registry import load_bundled_registry
-from imcts.benchmarks.sources import DatasetSource, ExpressionSource
+from imcts.benchmarks.sources import DatasetSource, ExpressionSource, PreparedCaseData
 from imcts.benchmarks.writer import case_output_path
 
 
@@ -138,6 +139,119 @@ def test_dataset_source_loads_csv_and_rejects_lfs_pointer(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Git LFS pointer"):
         DatasetSource().prepare(invalid_case, settings, seed=0, workspace_root=tmp_path)
+
+
+def test_run_case_subsamples_large_training_split(monkeypatch: pytest.MonkeyPatch):
+    captured = {}
+
+    class FakeConfig:
+        pass
+
+    class FakeResult:
+        def __init__(self):
+            self.best_coefficients = []
+            self.expression = "x0"
+            self.best_reward = 0.75
+            self.n_evals = 7
+
+    class FakeRegressor:
+        def __init__(self, x, y, cfg):
+            captured["x_shape"] = x.shape
+            captured["y_shape"] = y.shape
+            self.cfg = cfg
+
+        def fit(self, seed):
+            assert seed is not None
+            return FakeResult()
+
+    fake_imcts = SimpleNamespace(RegressorConfig=FakeConfig, Regressor=FakeRegressor)
+    monkeypatch.setattr("imcts.benchmarks.executor.require_imcts", lambda: fake_imcts)
+
+    registry = load_bundled_registry()
+    group = registry.get_group("BlackBox")
+    settings = build_settings(make_args(), group, load_yaml_resource(None, group.default_config_name))
+    n_samples = 13_336
+    X_total = np.arange(n_samples, dtype=np.float64).reshape(-1, 1)
+    prepared = PreparedCaseData(
+        X_total=X_total,
+        y_total=X_total[:, 0],
+        feature_names=["x0"],
+        target_expression="",
+        source_type="dataset",
+    )
+
+    result = executor.run_case(
+        "BlackBox",
+        {"id": 1, "name": "large"},
+        run_index=0,
+        seed=42,
+        settings=settings,
+        prepared=prepared,
+    )
+
+    assert captured["x_shape"] == (1, 10_000)
+    assert captured["y_shape"] == (10_000,)
+    assert result.samples_train == 10_000
+    assert result.samples_test == 3_334
+    assert result.samples_total == n_samples
+
+
+def test_format_result_omits_training_sample_count():
+    result = executor.BenchmarkResult(
+        group="BlackBox",
+        case_id=1,
+        case_name="1027_ESL",
+        source_type="dataset",
+        run=0,
+        seed=23654,
+        samples_total=13_336,
+        samples_train=10_000,
+        samples_test=3_334,
+        variables=4,
+        feature_names=["x0"],
+        target_expression="",
+        reward=0.750642,
+        success=False,
+        train_r2=0.889648,
+        test_r2=0.850435,
+        complexity=44.0,
+        evaluations=500_002,
+        time_sec=78.088,
+        expression="x0",
+        materialized_expression="x0",
+        simplified_expression="x0",
+        coefficients=[],
+        ops=["+", "-"],
+        max_depth=4,
+        max_unary=2,
+        max_constants=1,
+        max_evals=500_000,
+        lm_iterations=10,
+        test_ratio=0.25,
+    )
+
+    assert "train_n=" not in runner._format_result(result)
+
+
+def test_list_blackbox_without_datasets_does_not_require_data(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    assert runner.main(["--list", "--group", "BlackBox"], workspace_root=tmp_path) == 0
+
+    output = capsys.readouterr().out
+    assert "BlackBox:" in output
+    assert "1027_ESL" in output
+    assert "train_n=" not in output
+
+
+def test_list_blackbox_includes_dataset_shape_when_available(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    dataset_name = load_bundled_registry().get_cases("BlackBox")[0]["name"]
+    dataset_file = tmp_path / "datasets" / dataset_name / f"{dataset_name}.csv"
+    dataset_file.parent.mkdir(parents=True)
+    dataset_file.write_text("x0,x1,target\n1,2,3\n4,5,6\n7,8,9\n10,11,12\n", encoding="utf-8")
+
+    assert runner.main(["--list", "--group", "BlackBox"], workspace_root=tmp_path) == 0
+
+    output = capsys.readouterr().out
+    assert "1: 1027_ESL  samples=4 features=2 train_n=3 test_n=1" in output
 
 
 def test_runner_smoke_for_nguyen_and_blackbox(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):

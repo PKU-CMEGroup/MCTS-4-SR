@@ -25,6 +25,8 @@ MCTS_4_SR_SEEDS = [
     3943, 23939, 19457, 1021, 11653, 10805, 13417, 20227, 7989, 9692,
 ]
 
+MAX_TRAINING_SAMPLES = 10_000
+
 
 @dataclass(frozen=True)
 class BenchmarkResult:
@@ -118,12 +120,39 @@ def split_train_test(X_total, y_total, test_ratio: float, seed: int):
     if n_samples < 2:
         raise ValueError("Need at least two samples to create a train/test split.")
 
-    n_test = max(1, int(round(n_samples * test_ratio)))
-    n_test = min(n_test, n_samples - 1)
+    _, n_test = training_split_counts(n_samples, test_ratio, max_samples=None)
     permutation = np.random.default_rng(seed).permutation(n_samples)
     test_idx = permutation[:n_test]
     train_idx = permutation[n_test:]
     return X_total[train_idx], X_total[test_idx], y_total[train_idx], y_total[test_idx]
+
+
+def training_split_counts(n_samples: int, test_ratio: float, max_samples: int | None = MAX_TRAINING_SAMPLES) -> tuple[int, int]:
+    if not 0.0 < test_ratio < 1.0:
+        raise ValueError("test_ratio must be between 0 and 1.")
+    if n_samples < 2:
+        raise ValueError("Need at least two samples to create a train/test split.")
+
+    n_test = max(1, int(round(n_samples * test_ratio)))
+    n_test = min(n_test, n_samples - 1)
+    n_train = n_samples - n_test
+    if max_samples is not None:
+        n_train = min(n_train, max_samples)
+    return n_train, n_test
+
+
+def subsample_training_data(X_train, y_train, max_samples: int = MAX_TRAINING_SAMPLES, seed: int = 0):
+    import numpy as np
+
+    if max_samples <= 0:
+        raise ValueError("max_samples must be positive.")
+
+    n_samples = X_train.shape[0]
+    if n_samples <= max_samples:
+        return X_train, y_train
+
+    sample_idx = np.random.default_rng(seed).choice(n_samples, size=max_samples, replace=False)
+    return X_train[sample_idx], y_train[sample_idx]
 
 
 def evaluate_expression(expression: str, X, coefficients: list[float] | None = None):
@@ -224,6 +253,7 @@ def run_case(
 
     imcts = require_imcts()
     X_train, X_test, y_train, y_test = split_train_test(prepared.X_total, prepared.y_total, settings.test_ratio, seed)
+    X_train, y_train = subsample_training_data(X_train, y_train, seed=seed)
     cfg = make_regressor_config(settings)
     model = imcts.Regressor(
         X_train.T.astype(np.float32, copy=False),

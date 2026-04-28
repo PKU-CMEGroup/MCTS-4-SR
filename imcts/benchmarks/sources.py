@@ -22,6 +22,13 @@ class PreparedCaseData:
     source_type: str
 
 
+@dataclass(frozen=True)
+class DatasetMetadata:
+    samples: int
+    features: int
+    path: Path
+
+
 class BenchmarkSource(Protocol):
     def prepare(
         self,
@@ -236,6 +243,42 @@ def load_dataset(path: Path, label: str):
     X = np.asarray(X_rows, dtype=np.float64)
     y = np.asarray(y_values, dtype=np.float64)
     return X, y, feature_names
+
+
+def inspect_dataset(path: Path, label: str) -> DatasetMetadata:
+    delimiter = detect_delimiter(path)
+    with open_text_file(path) as f:
+        first_line = f.readline()
+        if first_line.startswith("version https://git-lfs.github.com/spec/v1"):
+            raise ValueError(
+                f"{path} is a Git LFS pointer, not the real dataset file. "
+                "Fetch the dataset contents first, then rerun the benchmark."
+            )
+        f.seek(0)
+        reader = csv.reader(f, delimiter=delimiter)
+        try:
+            fieldnames = next(reader)
+        except StopIteration as exc:
+            raise ValueError(f"{path} has no header row.") from exc
+
+        cleaned_columns = [name.strip().replace(".", "_") for name in fieldnames]
+        normalized_label = label.strip().replace(".", "_")
+        if normalized_label not in cleaned_columns:
+            raise ValueError(f"Target column {normalized_label!r} not found in {path}.")
+
+        samples = sum(1 for _ in reader)
+        return DatasetMetadata(
+            samples=samples,
+            features=len(cleaned_columns) - 1,
+            path=path,
+        )
+
+
+def inspect_case_dataset(dataset_dir: Path, case_name: str, label: str) -> DatasetMetadata | None:
+    for candidate in dataset_candidates(dataset_dir, case_name):
+        if candidate.exists():
+            return inspect_dataset(candidate, label)
+    return None
 
 
 def load_case_dataset(dataset_dir: Path, case_name: str, label: str):
