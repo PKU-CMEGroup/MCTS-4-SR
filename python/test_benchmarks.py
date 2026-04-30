@@ -233,6 +233,129 @@ def test_format_result_omits_training_sample_count():
     assert "train_n=" not in runner._format_result(result)
 
 
+def make_benchmark_result(case_name: str, run: int) -> executor.BenchmarkResult:
+    return executor.BenchmarkResult(
+        group="BlackBox",
+        case_id=1,
+        case_name=case_name,
+        source_type="dataset",
+        run=run,
+        seed=executor.seed_for_run(0, run),
+        samples_total=4,
+        samples_train=3,
+        samples_test=1,
+        variables=1,
+        feature_names=["x0"],
+        target_expression="",
+        reward=0.5,
+        success=False,
+        train_r2=0.5,
+        test_r2=0.5,
+        complexity=1.0,
+        evaluations=7,
+        time_sec=1.0,
+        expression="x0",
+        materialized_expression="x0",
+        simplified_expression="x0",
+        coefficients=[],
+        ops=["+"],
+        max_depth=2,
+        max_unary=1,
+        max_constants=1,
+        max_evals=10,
+        lm_iterations=1,
+        test_ratio=0.25,
+    )
+
+
+def test_parallel_runner_checkpoints_case_csv_after_each_completed_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    case = {"id": 1, "name": "slow_case"}
+    first_result = make_benchmark_result("slow_case", run=0)
+    second_result = make_benchmark_result("slow_case", run=1)
+    future_results = [first_result, second_result]
+
+    class FakeFuture:
+        def __init__(self, result: executor.BenchmarkResult):
+            self._result = result
+
+        def result(self):
+            return self._result
+
+    class FakePool:
+        def __init__(self, max_workers, initializer):
+            self.futures: list[FakeFuture] = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def submit(self, fn, *args):
+            future = FakeFuture(future_results[len(self.futures)])
+            self.futures.append(future)
+            return future
+
+    def fake_as_completed(futures):
+        futures = list(futures)
+        output_path = case_output_path(tmp_path, "BlackBox", case)
+        yield futures[0]
+        assert output_path.exists()
+        with output_path.open("r", encoding="utf-8", newline="") as f:
+            checkpoint_rows = list(csv.DictReader(f))
+        assert [row["run"] for row in checkpoint_rows] == ["0"]
+        yield futures[1]
+
+    monkeypatch.setattr(runner, "ProcessPoolExecutor", FakePool)
+    monkeypatch.setattr(runner, "as_completed", fake_as_completed)
+
+    settings = SimpleNamespace(runs=2, seed_start=0, source_type="dataset")
+    runner._run_parallel([case], settings, "BlackBox", tmp_path, tmp_path, num_workers=2)
+
+
+def test_parallel_runner_interleaves_cases_by_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    cases = [{"id": 1, "name": "case_a"}, {"id": 2, "name": "case_b"}]
+    submitted: list[tuple[str, int]] = []
+
+    class FakeFuture:
+        def __init__(self, case_name: str, run_index: int):
+            self._result = make_benchmark_result(case_name, run_index)
+
+        def result(self):
+            return self._result
+
+    class FakePool:
+        def __init__(self, max_workers, initializer):
+            self.futures: list[FakeFuture] = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def submit(self, fn, *args):
+            case = args[1]
+            run_index = args[2]
+            submitted.append((case["name"], run_index))
+            future = FakeFuture(case["name"], run_index)
+            self.futures.append(future)
+            return future
+
+    monkeypatch.setattr(runner, "ProcessPoolExecutor", FakePool)
+    monkeypatch.setattr(runner, "as_completed", lambda futures: list(futures))
+
+    settings = SimpleNamespace(runs=2, seed_start=0, source_type="dataset")
+    runner._run_parallel(cases, settings, "BlackBox", tmp_path, tmp_path, num_workers=2)
+
+    assert submitted == [
+        ("case_a", 0),
+        ("case_b", 0),
+        ("case_a", 1),
+        ("case_b", 1),
+    ]
+
+
 def test_list_blackbox_without_datasets_does_not_require_data(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     assert runner.main(["--list", "--group", "BlackBox"], workspace_root=tmp_path) == 0
 

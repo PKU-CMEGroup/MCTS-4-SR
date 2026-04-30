@@ -186,8 +186,8 @@ def _run_parallel(
     cases_by_name = {case["name"]: case for case in selected_cases}
     case_rows: dict[str, list[executor.BenchmarkResult]] = {case["name"]: [] for case in selected_cases}
     remaining_runs = {case["name"]: settings.runs for case in selected_cases}
-    for case in selected_cases:
-        for run_index in range(settings.runs):
+    for run_index in range(settings.runs):
+        for case in selected_cases:
             seed = executor.seed_for_run(settings.seed_start, run_index)
             tasks.append((group_name, case, run_index, seed, settings, settings.source_type, workspace_root))
 
@@ -202,11 +202,11 @@ def _run_parallel(
             remaining_runs[case_name] -= 1
             print(_format_result(result))
 
+            checkpoint_rows = sorted(case_rows[case_name], key=lambda row: row.run)
+            case_path = case_output_path(output_dir, group_name, cases_by_name[case_name])
+            write_csv(checkpoint_rows, case_path)
             if remaining_runs[case_name] == 0:
-                finished_rows = sorted(case_rows[case_name], key=lambda row: row.run)
-                case_path = case_output_path(output_dir, group_name, cases_by_name[case_name])
-                write_csv(finished_rows, case_path)
-                print(f"wrote {len(finished_rows)} rows to {case_path}")
+                print(f"wrote {len(checkpoint_rows)} rows to {case_path}")
 
     results.sort(key=lambda r: (r.case_name, r.run))
     return results
