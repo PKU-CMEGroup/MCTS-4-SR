@@ -24,6 +24,7 @@ PYBIND11_MODULE(imcts_py, m) {
         .def_readwrite("max_constants",     &RegressorConfig::max_constants)
         .def_readwrite("lm_iterations",     &RegressorConfig::lm_iterations)
         .def_readwrite("max_evals",         &RegressorConfig::max_evals)
+        .def_readwrite("max_time_sec",      &RegressorConfig::max_time_sec)
         .def_readwrite("succ_error_tol",    &RegressorConfig::succ_error_tol);
 
     py::class_<FitResult>(m, "FitResult")

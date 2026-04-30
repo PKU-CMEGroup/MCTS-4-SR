@@ -143,22 +143,12 @@ def _run_sequential(
     group_name: str,
     workspace_root: Path,
     output_dir: Path,
-    wall_time_limit_sec: float | None,
-    wall_time_start: float,
 ) -> list[executor.BenchmarkResult]:
-    """Original sequential execution path.
-
-    The optional wall-clock limit is enforced only in this path. Parallel
-    execution currently runs every submitted task to completion.
-    """
+    """Original sequential execution path."""
     rows: list[executor.BenchmarkResult] = []
     for case in selected_cases:
         case_rows: list[executor.BenchmarkResult] = []
         for run_index in range(settings.runs):
-            if wall_time_limit_sec is not None and time.perf_counter() - wall_time_start > wall_time_limit_sec:
-                print(f"stopping        : reached wall-clock limit before {case['name']} run={run_index}")
-                return rows
-
             seed = executor.seed_for_run(settings.seed_start, run_index)
             prepared = source.prepare(case, settings, seed, workspace_root)
             result = executor.run_case(group_name, case, run_index, seed, settings, prepared)
@@ -266,21 +256,18 @@ def main(
     if settings.auto_added_constant:
         print(f"note            : auto-added constant op R for {group_name} because neither YAML nor CLI specified ops")
     if settings.max_wall_time_hours is not None:
-        print(f"max_wall_time_h : {settings.max_wall_time_hours}")
+        print(f"max_run_time_h  : {settings.max_wall_time_hours}")
     print(f"workers         : {num_workers}")
     if settings.results_dir is not None and args.output is None:
         print(f"results_root    : {settings.results_dir}")
     print(f"output          : {output}")
 
     wall_time_start = time.perf_counter()
-    wall_time_limit = settings.max_wall_time_hours
-    wall_time_limit_sec = None if wall_time_limit is None else max(0.0, float(wall_time_limit) * 3600.0)
 
     if num_workers <= 1:
         rows = _run_sequential(
             selected_cases, settings, source, group_name, workspace_root,
             output,
-            wall_time_limit_sec, wall_time_start,
         )
     else:
         rows = _run_parallel(

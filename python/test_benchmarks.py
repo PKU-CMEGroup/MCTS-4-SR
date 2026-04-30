@@ -97,6 +97,26 @@ def test_build_settings_prefers_cli_over_yaml_and_defaults():
     assert settings.test_ratio == 0.4
 
 
+def test_make_regressor_config_sets_per_run_wall_time_seconds(monkeypatch: pytest.MonkeyPatch):
+    class FakeConfig:
+        pass
+
+    fake_imcts = SimpleNamespace(RegressorConfig=FakeConfig)
+    monkeypatch.setattr("imcts.benchmarks.executor.require_imcts", lambda: fake_imcts)
+
+    registry = load_bundled_registry()
+    group = registry.get_group("BlackBox")
+    settings = build_settings(
+        make_args(max_wall_time_hours=2.5),
+        group,
+        load_yaml_resource(None, group.default_config_name),
+    )
+
+    cfg = executor.make_regressor_config(settings)
+
+    assert cfg.max_time_sec == 9000.0
+
+
 def test_expression_source_prepares_symbolic_case():
     registry = load_bundled_registry()
     group = registry.get_group("Nguyen")
@@ -356,6 +376,31 @@ def test_parallel_runner_interleaves_cases_by_run(monkeypatch: pytest.MonkeyPatc
     ]
 
 
+def test_sequential_runner_does_not_apply_group_wall_time_limit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    case = {"id": 1, "name": "case_a"}
+
+    class FakeSource:
+        def prepare(self, case, settings, seed, workspace_root):
+            return object()
+
+    def fake_run_case(group_name, case, run_index, seed, settings, prepared):
+        return make_benchmark_result(case["name"], run_index)
+
+    monkeypatch.setattr(runner.executor, "run_case", fake_run_case)
+
+    settings = SimpleNamespace(runs=2, seed_start=0, source_type="dataset")
+    rows = runner._run_sequential(
+        [case],
+        settings,
+        FakeSource(),
+        "BlackBox",
+        tmp_path,
+        tmp_path,
+    )
+
+    assert [row.run for row in rows] == [0, 1]
+
+
 def test_list_blackbox_without_datasets_does_not_require_data(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     assert runner.main(["--list", "--group", "BlackBox"], workspace_root=tmp_path) == 0
 
@@ -402,7 +447,7 @@ def test_runner_smoke_for_nguyen_and_blackbox(monkeypatch: pytest.MonkeyPatch, t
     monkeypatch.setattr("imcts.benchmarks.executor.require_imcts", lambda: fake_imcts)
 
     nguyen_output_dir = tmp_path / "nguyen"
-    assert runner.main(["--group", "Nguyen", "--cases", "1", "--runs", "1", "--output", str(nguyen_output_dir)], workspace_root=tmp_path) == 0
+    assert runner.main(["--group", "Nguyen", "--cases", "1", "--runs", "1", "--workers", "1", "--output", str(nguyen_output_dir)], workspace_root=tmp_path) == 0
 
     dataset_name = load_bundled_registry().get_cases("BlackBox")[0]["name"]
     dataset_file = tmp_path / "datasets" / dataset_name / f"{dataset_name}.csv"
@@ -410,7 +455,7 @@ def test_runner_smoke_for_nguyen_and_blackbox(monkeypatch: pytest.MonkeyPatch, t
     dataset_file.write_text("x0,target\n1,1\n2,2\n3,3\n4,4\n", encoding="utf-8")
 
     blackbox_output_dir = tmp_path / "blackbox"
-    assert runner.main(["--group", "BlackBox", "--cases", "1", "--runs", "1", "--output", str(blackbox_output_dir)], workspace_root=tmp_path) == 0
+    assert runner.main(["--group", "BlackBox", "--cases", "1", "--runs", "1", "--workers", "1", "--output", str(blackbox_output_dir)], workspace_root=tmp_path) == 0
 
     nguyen_case = load_bundled_registry().get_cases("Nguyen")[0]
     blackbox_case = load_bundled_registry().get_cases("BlackBox")[0]

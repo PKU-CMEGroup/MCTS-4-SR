@@ -224,6 +224,7 @@ def make_regressor_config(settings: BenchmarkSettings):
     cfg.max_unary = settings.max_unary
     cfg.max_constants = settings.max_constants
     cfg.max_evals = settings.max_evals
+    cfg.max_time_sec = 0.0 if settings.max_wall_time_hours is None else max(0.0, float(settings.max_wall_time_hours) * 3600.0)
     cfg.lm_iterations = settings.lm_iterations
     cfg.K = settings.K
     cfg.c = settings.c

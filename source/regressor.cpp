@@ -1,5 +1,6 @@
 // source/regressor.cpp
 #include "imcts/regressor.hpp"
+#include <chrono>
 #include <random>
 
 namespace imcts {
@@ -28,8 +29,15 @@ FitResult Regressor::fit(std::optional<uint64_t> seed) {
     };
     MCTS mcts(*pset_, evaluator_, gp_manager_, mcts_cfg);
     ExpTree tree(*pset_, cfg_.max_depth, cfg_.max_unary, cfg_.max_constants);
+    const bool has_time_limit = cfg_.max_time_sec > 0.0;
+    const auto start = std::chrono::steady_clock::now();
 
     while (mcts.count() < cfg_.max_evals) {
+        if (has_time_limit) {
+            const auto now = std::chrono::steady_clock::now();
+            const std::chrono::duration<double> elapsed = now - start;
+            if (elapsed.count() >= cfg_.max_time_sec) break;
+        }
         float best = mcts.search(tree, rng);
         if (1.0f - best < cfg_.succ_error_tol) break;
     }
