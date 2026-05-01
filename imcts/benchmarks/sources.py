@@ -191,6 +191,13 @@ def dataset_candidates(dataset_dir: Path, case_name: str) -> list[Path]:
     ]
 
 
+def summary_stats_candidates(dataset_dir: Path, case_name: str) -> list[Path]:
+    return [
+        dataset_dir / case_name / "summary_stats.tsv",
+        dataset_dir / f"_deprecated_{case_name}" / "summary_stats.tsv",
+    ]
+
+
 def resolve_dataset_dir(settings: BenchmarkSettings, workspace_root: Path) -> Path:
     """Resolve the dataset root for BlackBox benchmarks."""
     if settings.dataset_dir is not None:
@@ -274,7 +281,28 @@ def inspect_dataset(path: Path, label: str) -> DatasetMetadata:
         )
 
 
+def inspect_summary_stats(path: Path) -> DatasetMetadata:
+    with path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        try:
+            row = next(reader)
+        except StopIteration as exc:
+            raise ValueError(f"{path} has no data row.") from exc
+
+    try:
+        samples = int(row["n_instances"])
+        features = int(row["n_features"])
+    except KeyError as exc:
+        raise ValueError(f"{path} must contain n_instances and n_features columns.") from exc
+
+    return DatasetMetadata(samples=samples, features=features, path=path)
+
+
 def inspect_case_dataset(dataset_dir: Path, case_name: str, label: str) -> DatasetMetadata | None:
+    for candidate in summary_stats_candidates(dataset_dir, case_name):
+        if candidate.exists():
+            return inspect_summary_stats(candidate)
+
     for candidate in dataset_candidates(dataset_dir, case_name):
         if candidate.exists():
             return inspect_dataset(candidate, label)

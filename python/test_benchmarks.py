@@ -23,7 +23,7 @@ if str(LOCAL_BENCHMARKS) not in benchmarks_pkg.__path__:
 from imcts.benchmarks import executor, runner
 from imcts.benchmarks.config import build_settings, load_yaml_resource
 from imcts.benchmarks.registry import load_bundled_registry
-from imcts.benchmarks.sources import DatasetSource, ExpressionSource, PreparedCaseData
+from imcts.benchmarks.sources import DatasetSource, ExpressionSource, PreparedCaseData, inspect_case_dataset
 from imcts.benchmarks.writer import case_output_path
 
 
@@ -159,6 +159,41 @@ def test_dataset_source_loads_csv_and_rejects_lfs_pointer(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Git LFS pointer"):
         DatasetSource().prepare(invalid_case, settings, seed=0, workspace_root=tmp_path)
+
+
+def test_inspect_case_dataset_prefers_summary_stats_over_data_file(tmp_path: Path):
+    case_dir = tmp_path / "datasets" / "toy"
+    case_dir.mkdir(parents=True)
+    (case_dir / "summary_stats.tsv").write_text(
+        "dataset\tn_instances\tn_features\ttask\n"
+        "toy\t159\t15\tregression\n",
+        encoding="utf-8",
+    )
+    (case_dir / "toy.csv").write_text("x0,target\n1,2\n3,4\n", encoding="utf-8")
+
+    metadata = inspect_case_dataset(tmp_path / "datasets", "toy", "target")
+
+    assert metadata is not None
+    assert metadata.samples == 159
+    assert metadata.features == 15
+    assert metadata.path == case_dir / "summary_stats.tsv"
+
+
+def test_inspect_case_dataset_supports_deprecated_summary_stats_directory(tmp_path: Path):
+    case_dir = tmp_path / "datasets" / "_deprecated_legacy"
+    case_dir.mkdir(parents=True)
+    (case_dir / "summary_stats.tsv").write_text(
+        "dataset\tn_instances\tn_features\ttask\n"
+        "_deprecated_legacy\t47\t7\tregression\n",
+        encoding="utf-8",
+    )
+
+    metadata = inspect_case_dataset(tmp_path / "datasets", "legacy", "target")
+
+    assert metadata is not None
+    assert metadata.samples == 47
+    assert metadata.features == 7
+    assert metadata.path == case_dir / "summary_stats.tsv"
 
 
 def test_run_case_subsamples_large_training_split(monkeypatch: pytest.MonkeyPatch):
@@ -412,14 +447,36 @@ def test_list_blackbox_without_datasets_does_not_require_data(tmp_path: Path, ca
 
 def test_list_blackbox_includes_dataset_shape_when_available(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     dataset_name = load_bundled_registry().get_cases("BlackBox")[0]["name"]
-    dataset_file = tmp_path / "datasets" / dataset_name / f"{dataset_name}.csv"
-    dataset_file.parent.mkdir(parents=True)
-    dataset_file.write_text("x0,x1,target\n1,2,3\n4,5,6\n7,8,9\n10,11,12\n", encoding="utf-8")
+    summary_file = tmp_path / "datasets" / dataset_name / "summary_stats.tsv"
+    summary_file.parent.mkdir(parents=True)
+    summary_file.write_text(
+        "dataset\tn_instances\tn_features\ttask\n"
+        f"{dataset_name}\t4\t2\tregression\n",
+        encoding="utf-8",
+    )
 
     assert runner.main(["--list", "--group", "BlackBox"], workspace_root=tmp_path) == 0
 
     output = capsys.readouterr().out
-    assert "1: 1027_ESL  samples=4 features=2 train_n=3 test_n=1" in output
+    assert "  1: 1027_ESL" in output
+    assert "samples=4" in output
+    assert "features=2" in output
+    assert "train_n=3" in output
+    assert "test_n=1" in output
+
+
+def test_list_symbolic_includes_shape_before_expression(capsys: pytest.CaptureFixture[str]):
+    assert runner.main(["--list", "--group", "Nguyen"]) == 0
+
+    output = capsys.readouterr().out
+    first_case_line = next(line for line in output.splitlines() if "Nguyen-1" in line)
+    assert "samples=40" in first_case_line
+    assert "features=1" in first_case_line
+    assert "train_n=20" in first_case_line
+    assert "test_n=20" in first_case_line
+    assert "expr=x[0]**3 + x[0]**2 + x[0]" in first_case_line
+    assert first_case_line.index("test_n=20") < first_case_line.index("expr=")
+    assert " y = " not in first_case_line
 
 
 def test_runner_smoke_for_nguyen_and_blackbox(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):

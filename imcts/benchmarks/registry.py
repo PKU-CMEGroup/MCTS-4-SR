@@ -102,14 +102,17 @@ def print_available_cases(
         if selected_group is not None and group_name != selected_group:
             continue
         print(f"{group_name}:")
-        for case in registry.get_cases(group_name):
+        cases = registry.get_cases(group_name)
+        name_width = max((len(case["name"]) for case in cases), default=0)
+        for case in cases:
             expression = case.get("expression")
             annotation = case_annotations.get((group_name, case["name"]), "")
             suffix = f"  {annotation}" if annotation else ""
             if expression:
-                print(f"  {case['id']:>3}: {case['name']}  y = {expression}{suffix}")
+                expr_suffix = f"  expr={expression}"
+                print(f"  {case['id']:>3}: {case['name']:<{name_width}}{suffix}{expr_suffix}")
             else:
-                print(f"  {case['id']:>3}: {case['name']}{suffix}")
+                print(f"  {case['id']:>3}: {case['name']:<{name_width}}{suffix}")
 
 
 def load_bundled_registry() -> BenchmarkRegistry:

@@ -99,27 +99,61 @@ def resolve_group_name(args_group: str | None, forced_group: str | None) -> str:
     return forced_group or args_group or "Nguyen"
 
 
+def _expression_sample_count(case: dict[str, Any], settings: BenchmarkSettings) -> int:
+    samples = settings.samples
+    if samples is None:
+        samples = max(2, int(round(case["samples"] * settings.sample_multiplier)))
+
+    sampling = case.get("sampling", "U").upper()
+    n_vars = int(case["variables"])
+    if sampling == "E" and n_vars > 1:
+        per_axis = max(2, int(round(samples ** (1.0 / n_vars))))
+        return per_axis ** n_vars
+    return int(samples)
+
+
+def _format_list_annotation(samples: int, features: int, test_ratio: float) -> str:
+    train_n, test_n = executor.training_split_counts(samples, test_ratio)
+    return (
+        f"samples={samples:<7} features={features:<3} "
+        f"train_n={train_n:<5} test_n={test_n}"
+    )
+
+
 def _list_case_annotations(args, registry: BenchmarkRegistry, selected_group: str | None, workspace_root: Path) -> dict[tuple[str, str], str]:
-    if selected_group not in (None, "BlackBox"):
-        return {}
-
-    group = registry.get_group("BlackBox")
-    config = load_yaml_resource(args.config, group.default_config_name)
-    settings = build_settings(args, group, config)
-    dataset_dir = settings.dataset_dir or workspace_root / "datasets"
-    if not dataset_dir.exists():
-        return {}
-
     annotations: dict[tuple[str, str], str] = {}
-    for case in registry.get_cases("BlackBox"):
-        metadata = inspect_case_dataset(dataset_dir, case["name"], settings.label)
-        if metadata is None:
+    for group_name in registry.list_groups():
+        if selected_group is not None and group_name != selected_group:
             continue
-        train_n, test_n = executor.training_split_counts(metadata.samples, settings.test_ratio)
-        annotations[("BlackBox", case["name"])] = (
-            f"samples={metadata.samples} features={metadata.features} "
-            f"train_n={train_n} test_n={test_n}"
-        )
+
+        group = registry.get_group(group_name)
+        config = load_yaml_resource(args.config, group.default_config_name)
+        settings = build_settings(args, group, config)
+
+        if group.source_type == "expression":
+            for case in registry.get_cases(group_name):
+                samples = _expression_sample_count(case, settings)
+                features = int(case["variables"])
+                annotations[(group_name, case["name"])] = _format_list_annotation(
+                    samples,
+                    features,
+                    settings.test_ratio,
+                )
+            continue
+
+        dataset_dir = settings.dataset_dir or workspace_root / "datasets"
+        if not dataset_dir.exists():
+            continue
+
+        for case in registry.get_cases(group_name):
+            metadata = inspect_case_dataset(dataset_dir, case["name"], settings.label)
+            if metadata is None:
+                continue
+            annotations[(group_name, case["name"])] = _format_list_annotation(
+                metadata.samples,
+                metadata.features,
+                settings.test_ratio,
+            )
     return annotations
 
 
