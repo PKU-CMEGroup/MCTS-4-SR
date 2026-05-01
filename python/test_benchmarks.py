@@ -161,6 +161,30 @@ def test_dataset_source_loads_csv_and_rejects_lfs_pointer(tmp_path: Path):
         DatasetSource().prepare(invalid_case, settings, seed=0, workspace_root=tmp_path)
 
 
+def test_dataset_source_loads_deprecated_prefixed_dataset_directory(tmp_path: Path):
+    registry = load_bundled_registry()
+    group = registry.get_group("BlackBox")
+    dataset_dir = tmp_path / "datasets"
+    case = {"id": 15, "name": "legacy"}
+
+    legacy_dir = dataset_dir / "_deprecated_legacy"
+    legacy_dir.mkdir(parents=True)
+    (legacy_dir / "_deprecated_legacy.tsv").write_text(
+        "x0\ttarget\n"
+        "1\t2\n"
+        "3\t4\n",
+        encoding="utf-8",
+    )
+
+    settings = build_settings(make_args(dataset_dir=dataset_dir), group, load_yaml_resource(None, group.default_config_name))
+    prepared = DatasetSource().prepare(case, settings, seed=0, workspace_root=tmp_path)
+
+    assert prepared.source_type == "dataset"
+    assert prepared.feature_names == ["x0"]
+    assert prepared.X_total.shape == (2, 1)
+    assert prepared.y_total.tolist() == [2.0, 4.0]
+
+
 def test_inspect_case_dataset_prefers_summary_stats_over_data_file(tmp_path: Path):
     case_dir = tmp_path / "datasets" / "toy"
     case_dir.mkdir(parents=True)

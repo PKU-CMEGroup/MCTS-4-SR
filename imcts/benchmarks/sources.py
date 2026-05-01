@@ -182,13 +182,18 @@ def open_text_file(path: Path):
 
 
 def dataset_candidates(dataset_dir: Path, case_name: str) -> list[Path]:
-    base = dataset_dir / case_name
-    return [
-        base / f"{case_name}.tsv.gz",
-        base / f"{case_name}.tsv",
-        base / f"{case_name}.csv.gz",
-        base / f"{case_name}.csv",
-    ]
+    candidates: list[Path] = []
+    for directory_name in (case_name, f"_deprecated_{case_name}"):
+        base = dataset_dir / directory_name
+        candidates.extend(
+            [
+                base / f"{directory_name}.tsv.gz",
+                base / f"{directory_name}.tsv",
+                base / f"{directory_name}.csv.gz",
+                base / f"{directory_name}.csv",
+            ]
+        )
+    return candidates
 
 
 def summary_stats_candidates(dataset_dir: Path, case_name: str) -> list[Path]:
