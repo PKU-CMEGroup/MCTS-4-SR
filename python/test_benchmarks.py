@@ -185,6 +185,29 @@ def test_dataset_source_loads_deprecated_prefixed_dataset_directory(tmp_path: Pa
     assert prepared.y_total.tolist() == [2.0, 4.0]
 
 
+def test_dataset_source_skips_rows_with_empty_values(tmp_path: Path):
+    registry = load_bundled_registry()
+    group = registry.get_group("BlackBox")
+    dataset_dir = tmp_path / "datasets"
+    case = {"id": 1, "name": "toy"}
+
+    case_dir = dataset_dir / "toy"
+    case_dir.mkdir(parents=True)
+    (case_dir / "toy.csv").write_text(
+        "x0,x1,target\n"
+        "1,10,2\n"
+        "3,,4\n"
+        "5,50,6\n",
+        encoding="utf-8",
+    )
+
+    settings = build_settings(make_args(dataset_dir=dataset_dir), group, load_yaml_resource(None, group.default_config_name))
+    prepared = DatasetSource().prepare(case, settings, seed=0, workspace_root=tmp_path)
+
+    assert prepared.X_total.tolist() == [[1.0, 10.0], [5.0, 50.0]]
+    assert prepared.y_total.tolist() == [2.0, 6.0]
+
+
 def test_inspect_case_dataset_prefers_summary_stats_over_data_file(tmp_path: Path):
     case_dir = tmp_path / "datasets" / "toy"
     case_dir.mkdir(parents=True)

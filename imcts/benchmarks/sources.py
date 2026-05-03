@@ -249,6 +249,8 @@ def load_dataset(path: Path, label: str):
     X_rows: list[list[float]] = []
     y_values: list[float] = []
     for row in rows:
+        if any(row[name] == "" for name in cleaned_columns):
+            continue
         X_rows.append([float(row[name]) for name in feature_names])
         y_values.append(float(row[normalized_label]))
 
