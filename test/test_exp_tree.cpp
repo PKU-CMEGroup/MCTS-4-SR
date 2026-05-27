@@ -49,6 +49,8 @@ TEST_CASE("ExpTree with max_depth=1 only allows leaves at the root") {
 
     imcts::ExpTree t(pset, 1, 0, 0);
     REQUIRE_THROWS(t.add_op(plus_idx));
+    REQUIRE_FALSE(t.try_add_op(plus_idx));
+    REQUIRE(t.is_empty());
 
     t.add_op(x0_idx);
     REQUIRE(t.is_terminal());
@@ -61,4 +63,23 @@ TEST_CASE("ExpTree random_fill produces terminal tree") {
     auto path = tree.random_fill(rng);
     REQUIRE(tree.is_terminal());
     REQUIRE_FALSE(path.empty());
+}
+
+TEST_CASE("ExpTree can_add_path checks suffix constraints without mutation") {
+    auto pset = imcts::make_primitive_set({"+", "sin", "cos"}, 1);
+    const uint8_t plus_idx = pset.op_index("+");
+    const uint8_t sin_idx = pset.op_index("sin");
+    const uint8_t x0_idx = pset.op_index("x0");
+
+    imcts::ExpTree prefix(pset, 3, 2, 0);
+    prefix.add_op(sin_idx);
+
+    const std::vector<uint8_t> valid_path = {plus_idx, x0_idx, x0_idx};
+    const std::vector<uint8_t> nested_sincos_path = {sin_idx, x0_idx};
+    const auto before = prefix.get_op_list();
+
+    REQUIRE(prefix.can_add_path(valid_path));
+    REQUIRE_FALSE(prefix.can_add_path(nested_sincos_path));
+    REQUIRE(prefix.get_op_list() == before);
+    REQUIRE_FALSE(prefix.is_terminal());
 }

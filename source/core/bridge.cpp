@@ -1,5 +1,6 @@
 // source/core/bridge.cpp
 #include "imcts/core/bridge.hpp"
+#include "imcts/eval/timing.hpp"
 #include <stdexcept>
 
 namespace imcts {
@@ -44,6 +45,7 @@ Tree Bridge::to_tree(std::span<uint8_t const> prefix) const
 
 void Bridge::to_tree(std::span<uint8_t const> prefix, Tree& out) const
 {
+    ScopedTimer timer(TimingSection::BridgeToTree);
     auto& nodes = out.nodes();
     nodes.clear();
     nodes.reserve(prefix.size());

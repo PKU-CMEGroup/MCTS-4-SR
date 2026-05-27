@@ -43,10 +43,12 @@ private:
     float rollout_once(ExpTree& state,
                        RandomGenerator& rng,
                        std::vector<uint8_t>& out_path);
-    float rollout_once(ExpTree& state,
-                       std::span<uint8_t const> given_path,
-                       RandomGenerator& rng,
-                       std::vector<uint8_t>& out_path);
+    bool rollout_once(ExpTree& state,
+                      std::span<uint8_t const> given_path,
+                      RandomGenerator& rng,
+                      std::vector<uint8_t>& out_path,
+                      float& reward,
+                      bool path_is_valid = false);
 
     float perform_mutation(MCTSNode* node, ExpTree& state, RandomGenerator& rng);
     float perform_crossover(MCTSNode* node, ExpTree& state, RandomGenerator& rng);

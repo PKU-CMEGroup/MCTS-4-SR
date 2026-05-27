@@ -289,6 +289,47 @@ TEST_CASE("Interpreter batch evaluate matches reference for representative trees
     }
 }
 
+TEST_CASE("Interpreter residual evaluation returns cleaned prediction errors")
+{
+    using imcts::Node;
+    using imcts::NodeType;
+
+    imcts::Dataset ds({{0.0f, 1.0f, 2.0f}}, {0.0f, 0.0f, 0.0f});
+    imcts::Range range{0, static_cast<std::size_t>(ds.n_samples())};
+    imcts::InterpreterWorkspace workspace;
+    Eigen::VectorXd residuals;
+
+    SECTION("finite predictions subtract target")
+    {
+        auto tree = make_constant_tree();
+        Eigen::VectorXd target(ds.n_samples());
+        target << 0.25, 1.75, 3.25;
+
+        imcts::Interpreter::evaluate_residual(tree, ds, range, target, residuals, workspace);
+
+        auto pred = imcts::Interpreter::evaluate(tree, ds, range);
+        require_close(residuals, pred - target, 1e-10);
+    }
+
+    SECTION("non-finite residuals are replaced")
+    {
+        std::vector<Node> nodes;
+        Node x0(NodeType::Variable); x0.var_index = 0; x0.optimize = false; nodes.push_back(x0);
+        nodes.emplace_back(NodeType::Log);
+        imcts::Tree tree(std::move(nodes));
+        tree.update_lengths();
+        Eigen::VectorXd target = Eigen::VectorXd::Zero(ds.n_samples());
+
+        imcts::Interpreter::evaluate_residual(tree, ds, range, target, residuals, workspace);
+
+        REQUIRE_FALSE(residuals.array().isNaN().any());
+        REQUIRE_FALSE(residuals.array().isInf().any());
+        REQUIRE(residuals(0) == Approx(1e6));
+        REQUIRE(residuals(1) == Approx(0.0));
+        REQUIRE(residuals(2) == Approx(std::log(2.0)));
+    }
+}
+
 TEST_CASE("Interpreter batch jacobian matches reference for constant and function trees")
 {
     auto ds = make_dataset();
@@ -300,6 +341,34 @@ TEST_CASE("Interpreter batch jacobian matches reference for constant and functio
         require_close(got_pred, ref_pred, 1e-10);
         require_close(got_jac, ref_jac, 1e-10);
     }
+}
+
+TEST_CASE("Interpreter jacobian replaces non-finite entries while writing batches")
+{
+    using imcts::Node;
+    using imcts::NodeType;
+
+    imcts::Dataset ds({{0.0f, 1.0f, 2.0f}}, {0.0f, 0.0f, 0.0f});
+    imcts::Range range{0, static_cast<std::size_t>(ds.n_samples())};
+
+    std::vector<Node> nodes;
+    Node x0(NodeType::Variable); x0.var_index = 0; x0.optimize = false; nodes.push_back(x0);
+    Node c(NodeType::Constant); c.value = 1.0; c.optimize = true; nodes.push_back(c);
+    nodes.emplace_back(NodeType::Mul);
+    nodes.emplace_back(NodeType::Log);
+    imcts::Tree tree(std::move(nodes));
+    tree.update_lengths();
+
+    auto [pred, jac] = imcts::Interpreter::evaluate_with_jacobian(tree, ds, range);
+
+    REQUIRE(pred.size() == ds.n_samples());
+    REQUIRE(jac.rows() == ds.n_samples());
+    REQUIRE(jac.cols() == 1);
+    REQUIRE_FALSE(jac.array().isNaN().any());
+    REQUIRE_FALSE(jac.array().isInf().any());
+    REQUIRE(jac(0, 0) == Approx(0.0));
+    REQUIRE(jac(1, 0) == Approx(1.0));
+    REQUIRE(jac(2, 0) == Approx(1.0));
 }
 
 TEST_CASE("CoefficientOptimizer reuses workspace across trees with different coefficient counts")

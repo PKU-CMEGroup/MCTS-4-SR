@@ -1,5 +1,6 @@
 // source/mcts/mcts.cpp
 #include "imcts/mcts/mcts.hpp"
+#include "imcts/eval/timing.hpp"
 #include <algorithm>
 #include <stdexcept>
 
@@ -8,15 +9,7 @@ namespace imcts {
 namespace {
 
 bool is_valid_rollout_path(const ExpTree& state, std::span<uint8_t const> path) {
-    try {
-        ExpTree cloned = state;
-        for (uint8_t op : path) {
-            cloned.add_op(op);
-        }
-        return true;
-    } catch (...) {
-        return false;
-    }
+    return state.can_add_path(path);
 }
 
 } // namespace
@@ -39,11 +32,12 @@ MCTSNode* MCTS::expand_node(MCTSNode* node, ExpTree& state, RandomGenerator& rng
 }
 
 float MCTS::search(ExpTree& tree, RandomGenerator& rng) {
+    ScopedTimer timer(TimingSection::MCTSSearch);
     MCTSNode* node = root_.get();
     ++count_num_;
     ++node->visits;
 
-    ExpTree state = tree; // copy fresh state for this iteration
+    ExpTree state = tree;
 
     // --- Selection ---
     while (!node->is_leaf()) {
@@ -102,38 +96,54 @@ float MCTS::rollout_once(
     RandomGenerator& rng,
     std::vector<uint8_t>& out_path)
 {
+    ScopedTimer timer(TimingSection::MCTSRollout);
     ExpTree cloned = state;
-    out_path = cloned.random_fill(rng);
+    cloned.random_fill(rng, out_path);
     return evaluator_->evaluate(cloned.get_op_list(), rng);
 }
 
-float MCTS::rollout_once(
+bool MCTS::rollout_once(
     ExpTree& state,
     std::span<uint8_t const> given_path,
     RandomGenerator& rng,
-    std::vector<uint8_t>& out_path)
+    std::vector<uint8_t>& out_path,
+    float& reward,
+    bool path_is_valid)
 {
+    ScopedTimer timer(TimingSection::MCTSRollout);
+    if (!path_is_valid && !state.can_add_path(given_path)) {
+        out_path.clear();
+        reward = 0.0f;
+        return false;
+    }
+
     ExpTree cloned = state;
-    for (uint8_t op : given_path) cloned.add_op(op);
+    for (uint8_t op : given_path) {
+        cloned.add_available_op(op);
+    }
     out_path.assign(given_path.begin(), given_path.end());
-    return evaluator_->evaluate(cloned.get_op_list(), rng);
+    reward = evaluator_->evaluate(cloned.get_op_list(), rng);
+    return true;
 }
 
 float MCTS::perform_mutation(MCTSNode* node, ExpTree& state, RandomGenerator& rng) {
-    try {
-        if (node->path_queue.is_empty()) return 0.0f;
-        const auto& old_entry = node->path_queue.random_sample(rng);
-        auto new_path = gp_manager_->mutate(state, old_entry.path.span(), rng);
-        std::vector<uint8_t> out_path;
-        float reward = rollout_once(state, std::span<const uint8_t>(new_path), rng, out_path);
-        ++count_num_;
-        node->backpropagate(out_path, reward);
-        node->propagate(std::span<const uint8_t>(out_path), reward);
-        return reward;
-    } catch (...) { return 0.0f; }
+    ScopedTimer timer(TimingSection::MCTSMutation);
+    if (node->path_queue.is_empty()) return 0.0f;
+    const auto& old_entry = node->path_queue.random_sample(rng);
+    auto new_path = gp_manager_->mutate(state, old_entry.path.span(), rng);
+    std::vector<uint8_t> out_path;
+    float reward = 0.0f;
+    if (!rollout_once(state, std::span<const uint8_t>(new_path), rng, out_path, reward)) {
+        return 0.0f;
+    }
+    ++count_num_;
+    node->backpropagate(out_path, reward);
+    node->propagate(std::span<const uint8_t>(out_path), reward);
+    return reward;
 }
 
 float MCTS::perform_crossover(MCTSNode* node, ExpTree& state, RandomGenerator& rng) {
+    ScopedTimer timer(TimingSection::MCTSCrossover);
     if (node->path_queue.is_empty()) return 0.0f;
     const auto& e1 = node->path_queue.random_sample(rng);
     const auto& e2 = node->path_queue.random_sample(rng);
@@ -160,14 +170,15 @@ float MCTS::perform_crossover(MCTSNode* node, ExpTree& state, RandomGenerator& r
         if (!is_valid) {
             continue;
         }
-        try {
-            std::vector<uint8_t> out_path;
-            float reward = rollout_once(state, std::span<const uint8_t>(path), rng, out_path);
-            ++count_num_;
-            node->backpropagate(out_path, reward);
-            node->propagate(std::span<const uint8_t>(out_path), reward);
-            best = std::max(best, reward);
-        } catch (...) {}
+        std::vector<uint8_t> out_path;
+        float reward = 0.0f;
+        if (!rollout_once(state, std::span<const uint8_t>(path), rng, out_path, reward, true)) {
+            continue;
+        }
+        ++count_num_;
+        node->backpropagate(out_path, reward);
+        node->propagate(std::span<const uint8_t>(out_path), reward);
+        best = std::max(best, reward);
     }
     return best;
 }

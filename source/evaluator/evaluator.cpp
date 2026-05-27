@@ -51,7 +51,6 @@ Tree Evaluator::build_optimized_tree(std::span<uint8_t const> prefix)
 float Evaluator::compute_reward(const Eigen::VectorXd& y_pred) const
 {
     if (y_pred.size() != target_values_.size()) return 0.0f;
-    if (!y_pred.allFinite()) return 0.0f;
 
     double mse = (y_pred - target_values_).squaredNorm()
                  / static_cast<double>(y_pred.size());

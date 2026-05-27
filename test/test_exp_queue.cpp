@@ -25,11 +25,11 @@ TEST_CASE("ExpQueue keeps K best, evicts worst") {
     REQUIRE(q.size() == 3);
 }
 
-TEST_CASE("ExpQueue does not preallocate all K entries") {
+TEST_CASE("ExpQueue reserves K entry capacity without creating entries") {
     imcts::ExpQueue q(500);
 
     REQUIRE(q.entries().empty());
-    REQUIRE(q.entries().capacity() == 0);
+    REQUIRE(q.entries().capacity() >= 500);
 }
 
 TEST_CASE("ExpQueue near-duplicate rejection") {

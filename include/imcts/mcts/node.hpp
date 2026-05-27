@@ -8,6 +8,7 @@
 #include "imcts/core/types.hpp"
 #include "imcts/core/exp_queue.hpp"
 #include "imcts/core/exp_tree.hpp"
+#include "imcts/eval/timing.hpp"
 
 namespace imcts {
 
@@ -75,9 +76,22 @@ struct MCTSNode {
 
     // Propagate (reward, path) upward through the tree
     void backpropagate(std::span<const uint8_t> path, float reward) {
+        ScopedTimer timer(TimingSection::MCTSBackpropagate);
+
         std::size_t prefix_len = 0;
         for (MCTSNode* cur = this; cur != nullptr && cur->parent != nullptr; cur = cur->parent) {
             ++prefix_len;
+        }
+
+        std::size_t accepted_nodes = 0;
+        for (MCTSNode* cur = this; cur != nullptr; cur = cur->parent) {
+            if (!cur->path_queue.may_accept_reward(reward)) {
+                break;
+            }
+            ++accepted_nodes;
+        }
+        if (accepted_nodes == 0) {
+            return;
         }
 
         auto full_path = std::make_shared<std::vector<uint8_t>>(prefix_len + path.size());
@@ -92,7 +106,7 @@ struct MCTSNode {
 
         cur = this;
         std::size_t start = prefix_len;
-        while (cur != nullptr) {
+        for (std::size_t appended = 0; appended < accepted_nodes && cur != nullptr; ++appended) {
             if (!cur->path_queue.append_shared(full_path, start, reward)) {
                 break;
             }

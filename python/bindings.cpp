@@ -2,13 +2,46 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
+#include "imcts/eval/timing.hpp"
 #include "imcts/regressor.hpp"
+#include <string>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace py = pybind11;
 using namespace imcts;
 
 PYBIND11_MODULE(imcts_py, m) {
     m.doc() = "iMCTS C++ symbolic regression (pybind11 interface)";
+
+    m.def("openmp_info", [] {
+        py::dict info;
+#ifdef _OPENMP
+        info["enabled"] = true;
+        info["max_threads"] = omp_get_max_threads();
+        info["num_procs"] = omp_get_num_procs();
+#else
+        info["enabled"] = false;
+#endif
+        return info;
+    });
+
+    m.def("reset_timing_stats", &reset_timing_stats);
+    m.def("timing_stats", [] {
+        py::dict stats;
+        for (const auto& entry : timing_stats()) {
+            py::dict section;
+            section["calls"] = entry.calls;
+            section["total_seconds"] = entry.total_seconds;
+            section["average_seconds"] = entry.calls == 0
+                ? 0.0
+                : entry.total_seconds / static_cast<double>(entry.calls);
+            stats[py::str(std::string(entry.name))] = section;
+        }
+        return stats;
+    });
 
     py::class_<RegressorConfig>(m, "RegressorConfig")
         .def(py::init<>())

@@ -66,6 +66,7 @@ add_library(imcts_core STATIC
     source/core/tree.cpp
     source/eval/interpreter.cpp
     source/eval/optimizer.cpp
+    source/eval/timing.cpp
     source/evaluator/evaluator.cpp
     source/gp/gp_manager.cpp
     source/mcts/mcts.cpp

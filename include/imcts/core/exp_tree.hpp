@@ -4,6 +4,7 @@
 #include <vector>
 #include <stdexcept>
 #include <algorithm>
+#include <span>
 #include "symbol.hpp"
 #include "types.hpp"
 
@@ -26,9 +27,91 @@ public:
     }
 
     void add_op(uint8_t op_idx) {
-        if (std::find(available_.begin(), available_.end(), op_idx) == available_.end())
+        if (!can_add_op(op_idx))
             throw std::runtime_error("add_op: op not in available_ops");
 
+        add_available_op(op_idx);
+    }
+
+    bool can_add_op(uint8_t op_idx) const {
+        return std::find(available_.begin(), available_.end(), op_idx) != available_.end();
+    }
+
+    bool try_add_op(uint8_t op_idx) {
+        if (!can_add_op(op_idx)) {
+            return false;
+        }
+        add_available_op(op_idx);
+        return true;
+    }
+
+    bool can_add_path(std::span<uint8_t const> path) const {
+        std::vector<StackEntry> stack = stack_;
+        int unary_count = unary_count_;
+        int const_count = const_count_;
+        bool root_set = root_set_;
+
+        for (uint8_t op_idx : path) {
+            if (op_idx >= pset_->symbols.size()) {
+                return false;
+            }
+
+            const Symbol& sym = pset_->symbols[op_idx];
+            const bool at_max_depth = static_cast<int>(stack.size()) == max_depth_ - 1;
+            if (at_max_depth && sym.arity > 0) {
+                return false;
+            }
+            if (sym.arity == 1 && unary_count >= max_unary_) {
+                return false;
+            }
+            if (sym.node_type == NodeType::Constant && const_count >= max_constants_) {
+                return false;
+            }
+
+            if (!stack.empty()) {
+                const NodeType top_type = pset_->symbols[stack.back().op_idx].node_type;
+                if (top_type == NodeType::Log && sym.node_type == NodeType::Exp) {
+                    return false;
+                }
+                if (top_type == NodeType::Exp && sym.node_type == NodeType::Log) {
+                    return false;
+                }
+
+                for (const auto& entry : stack) {
+                    const NodeType type = pset_->symbols[entry.op_idx].node_type;
+                    if ((type == NodeType::Sin || type == NodeType::Cos)
+                        && (sym.node_type == NodeType::Sin || sym.node_type == NodeType::Cos)) {
+                        return false;
+                    }
+                }
+            }
+
+            if (sym.arity == 1) {
+                ++unary_count;
+            }
+            if (sym.node_type == NodeType::Constant) {
+                ++const_count;
+            }
+            root_set = true;
+
+            stack.push_back(StackEntry{
+                op_idx,
+                sym.arity,
+                0,
+                static_cast<int>(stack.size()),
+            });
+            while (!stack.empty() && stack.back().children_added == stack.back().arity) {
+                stack.pop_back();
+                if (!stack.empty()) {
+                    ++stack.back().children_added;
+                }
+            }
+        }
+
+        return root_set && stack.empty();
+    }
+
+    void add_available_op(uint8_t op_idx) {
         const Symbol& sym = pset_->symbols[op_idx];
         op_list_.push_back(op_idx);
 
@@ -62,13 +145,19 @@ public:
     // Randomly fill until is_terminal(); returns the ops added
     std::vector<uint8_t> random_fill(RandomGenerator& rng) {
         std::vector<uint8_t> path;
+        random_fill(rng, path);
+        return path;
+    }
+
+    void random_fill(RandomGenerator& rng, std::vector<uint8_t>& path) {
+        path.clear();
+        path.reserve(path.size() + static_cast<std::size_t>((1 << std::min(max_depth_, 10)) - 1));
         while (!is_terminal()) {
             const auto& avail = available_ops();
             uint8_t idx = avail[rng() % avail.size()];
             path.push_back(idx);
-            add_op(idx);
+            add_available_op(idx);
         }
-        return path;
     }
 
     void reset() {
@@ -100,6 +189,18 @@ private:
         // Match the original Python implementation:
         // once the current stack depth reaches max_depth - 1, only leaves can be placed.
         bool at_max_depth = static_cast<int>(stack_.size()) == max_depth_ - 1;
+        bool in_sincos = false;
+        NodeType top_type = NodeType::Variable;
+        if (!stack_.empty()) {
+            top_type = pset_->symbols[stack_.back().op_idx].node_type;
+            for (const auto& entry : stack_) {
+                const Symbol& s = pset_->symbols[entry.op_idx];
+                if (s.node_type == NodeType::Sin
+                    || s.node_type == NodeType::Cos) {
+                    in_sincos = true; break;
+                }
+            }
+        }
 
         for (uint8_t i = 0; i < static_cast<uint8_t>(pset_->symbols.size()); i++) {
             const Symbol& sym = pset_->symbols[i];
@@ -116,22 +217,13 @@ private:
 
             // log/exp mutual exclusion
             if (!stack_.empty()) {
-                const Symbol& top_sym = pset_->symbols[stack_.back().op_idx];
-                if (top_sym.node_type == NodeType::Log
+                if (top_type == NodeType::Log
                     && sym.node_type == NodeType::Exp) continue;
-                if (top_sym.node_type == NodeType::Exp
+                if (top_type == NodeType::Exp
                     && sym.node_type == NodeType::Log) continue;
             }
 
             // no nested sin/cos inside a sin/cos path
-            bool in_sincos = false;
-            for (const auto& entry : stack_) {
-                const Symbol& s = pset_->symbols[entry.op_idx];
-                if (s.node_type == NodeType::Sin
-                    || s.node_type == NodeType::Cos) {
-                    in_sincos = true; break;
-                }
-            }
             if (in_sincos && (sym.node_type == NodeType::Sin
                               || sym.node_type == NodeType::Cos)) continue;
 

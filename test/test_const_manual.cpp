@@ -7,6 +7,7 @@
 #include "imcts/core/dataset.hpp"
 #include "imcts/eval/interpreter.hpp"
 #include "imcts/eval/optimizer.hpp"
+#include "imcts/eval/timing.hpp"
 #include "imcts/regressor.hpp"
 
 TEST_CASE("Coefficient optimizer fits affine coefficients") {
@@ -62,6 +63,56 @@ TEST_CASE("Coefficient optimizer fits affine coefficients") {
     REQUIRE(coeffs[0] == Catch::Approx(2.5).margin(1e-3));
     REQUIRE(coeffs[1] == Catch::Approx(3.0).margin(1e-3));
     REQUIRE(mse < 1e-10);
+}
+
+TEST_CASE("Coefficient optimizer accumulates small normal equations without materializing jacobian") {
+    std::vector<imcts::Node> nodes;
+
+    imcts::Node x0(imcts::NodeType::Variable);
+    x0.var_index = 0;
+    x0.optimize = false;
+    nodes.push_back(x0);
+
+    imcts::Node c1(imcts::NodeType::Constant);
+    c1.value = 1.0;
+    c1.optimize = true;
+    nodes.push_back(c1);
+
+    nodes.emplace_back(imcts::NodeType::Mul);
+
+    imcts::Node c2(imcts::NodeType::Constant);
+    c2.value = 1.0;
+    c2.optimize = true;
+    nodes.push_back(c2);
+
+    nodes.emplace_back(imcts::NodeType::Add);
+
+    imcts::Tree tree(std::move(nodes));
+    tree.update_lengths();
+
+    constexpr int n = 2048;
+    std::vector<std::vector<float>> x_cols(1, std::vector<float>(n));
+    std::vector<float> y(n);
+    for (int i = 0; i < n; ++i) {
+        x_cols[0][i] = -3.0f + 6.0f * static_cast<float>(i) / static_cast<float>(n - 1);
+        y[i] = -1.25f * x_cols[0][i] + 0.75f;
+    }
+
+    imcts::Dataset ds(x_cols, y);
+    imcts::Range range{0, static_cast<std::size_t>(n)};
+
+    imcts::reset_timing_stats();
+    auto opt_tree = imcts::CoefficientOptimizer::optimize(tree, ds, range, 20);
+    const auto stats = imcts::timing_stats();
+
+    const auto coeffs = opt_tree.get_coefficients();
+    REQUIRE(coeffs.size() == 2);
+    REQUIRE(coeffs[0] == Catch::Approx(-1.25).margin(1e-3));
+    REQUIRE(coeffs[1] == Catch::Approx(0.75).margin(1e-3));
+
+    const auto jacobian_section =
+        stats[static_cast<std::size_t>(imcts::TimingSection::InterpreterEvaluateWithJacobian)];
+    REQUIRE(jacobian_section.calls == 0);
 }
 
 TEST_CASE("Tree structure hash ignores coefficient values") {

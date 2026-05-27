@@ -66,25 +66,13 @@ GPManager::GPManager(const PrimitiveSet& pset) : pset_(&pset) {}
 
 int GPManager::subtree_size(std::span<uint8_t const> path, int index) const {
     if (index >= static_cast<int>(path.size())) return 0;
-    struct Frame { int pos; int remaining; };
-    std::vector<Frame> stk;
-    stk.push_back({index, pset_->symbols[path[index]].arity});
-    int size = 1;
-    int cur = index + 1;
-    while (!stk.empty()) {
-        auto& top = stk.back();
-        if (top.remaining == 0) {
-            stk.pop_back();
-        } else {
-            if (cur >= static_cast<int>(path.size())) break;
-            top.remaining--;
-            int arity = pset_->symbols[path[cur]].arity;
-            stk.push_back({cur, arity});
-            size++;
-            cur++;
-        }
+    int open_slots = 1;
+    int cur = index;
+    while (open_slots > 0 && cur < static_cast<int>(path.size())) {
+        open_slots += static_cast<int>(pset_->symbols[path[cur]].arity) - 1;
+        ++cur;
     }
-    return size;
+    return cur - index;
 }
 
 int GPManager::depth_at(std::span<uint8_t const> path, int target) const {

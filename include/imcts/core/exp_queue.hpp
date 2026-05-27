@@ -63,7 +63,11 @@ struct QueueEntry {
 
 class ExpQueue {
 public:
-    explicit ExpQueue(int max_size) : max_size_(max_size) {}
+    explicit ExpQueue(int max_size) : max_size_(max_size) {
+        if (max_size_ > 0) {
+            entries_.reserve(static_cast<std::size_t>(max_size_));
+        }
+    }
 
     // Returns true if inserted; false if rejected (near-duplicate or too low)
     bool append(std::vector<uint8_t> path, float reward) {
@@ -100,31 +104,29 @@ public:
 
     const std::vector<QueueEntry>& entries() const { return entries_; }
 
-private:
-    bool append_impl(SharedPath path, float reward) {
+    bool may_accept_reward(float reward) const {
         if (!std::isfinite(reward)) return false;
-
-        // near-duplicate rejection
-        constexpr float kDupThresh = 1e-5f;
         if (max_size_ <= 0) return false;
 
-        const auto pos = std::lower_bound(
-            entries_.begin(), entries_.end(), reward,
-            [](const QueueEntry& entry, float candidate_reward) {
-                return entry.reward > candidate_reward;
-            });
-
-        auto is_duplicate = [&](const auto& it) {
-            return it != entries_.end() && std::abs(it->reward - reward) < kDupThresh;
-        };
-        if (is_duplicate(pos)
-            || (pos != entries_.begin() && is_duplicate(std::prev(pos)))) {
+        const auto pos = lower_bound_for_reward(reward);
+        if (is_near_duplicate(pos, reward)
+            || (pos != entries_.begin() && is_near_duplicate(std::prev(pos), reward))) {
             return false;
         }
 
         if (static_cast<int>(entries_.size()) == max_size_ && reward <= entries_.back().reward) {
             return false;
         }
+        return true;
+    }
+
+private:
+    bool append_impl(SharedPath path, float reward) {
+        if (!may_accept_reward(reward)) {
+            return false;
+        }
+
+        const auto pos = lower_bound_for_reward(reward);
 
         entries_.insert(pos, QueueEntry{std::move(path), reward});
 
@@ -132,6 +134,19 @@ private:
             entries_.pop_back();
         }
         return true;
+    }
+
+    std::vector<QueueEntry>::const_iterator lower_bound_for_reward(float reward) const {
+        return std::lower_bound(
+            entries_.begin(), entries_.end(), reward,
+            [](const QueueEntry& entry, float candidate_reward) {
+                return entry.reward > candidate_reward;
+            });
+    }
+
+    bool is_near_duplicate(std::vector<QueueEntry>::const_iterator it, float reward) const {
+        constexpr float kDupThresh = 1e-5f;
+        return it != entries_.end() && std::abs(it->reward - reward) < kDupThresh;
     }
 
     int                     max_size_;

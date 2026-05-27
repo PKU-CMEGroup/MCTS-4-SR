@@ -36,7 +36,80 @@ def test_pretty_expression_fallback_or_simplify():
     print(f"pretty expression: {simplified}")
 
 
+def test_openmp_info():
+    info = imcts.openmp_info()
+
+    assert isinstance(info, dict)
+    assert isinstance(info["enabled"], bool)
+    if info["enabled"]:
+        assert info["max_threads"] >= 1
+        assert info["num_procs"] >= 1
+
+
+def test_timing_stats():
+    imcts.reset_timing_stats()
+    stats = imcts.timing_stats()
+
+    expected_sections = {
+        "coefficient_optimize",
+        "bridge_to_tree",
+        "lm_residual",
+        "lm_jacobian",
+        "mcts_backpropagate",
+        "mcts_crossover",
+        "mcts_mutation",
+        "mcts_rollout",
+        "mcts_search",
+        "normal_equation_accumulate",
+        "optimizer_lm_minimize",
+        "interpreter_evaluate",
+        "interpreter_evaluate_residual",
+        "interpreter_evaluate_with_jacobian",
+    }
+    assert expected_sections.issubset(stats.keys())
+    for section in expected_sections:
+        assert stats[section]["calls"] == 0
+        assert stats[section]["total_seconds"] == 0.0
+        assert stats[section]["average_seconds"] == 0.0
+
+
+def test_timing_stats_record_fit_work():
+    n = 128
+    x = np.linspace(-1, 1, n, dtype=np.float32).reshape(1, n)
+    y = (2.0 * x[0] + 1.0).astype(np.float32)
+
+    cfg = imcts.RegressorConfig()
+    cfg.ops = ["+", "*", "R"]
+    cfg.max_depth = 3
+    cfg.K = 10
+    cfg.max_evals = 50
+    cfg.lm_iterations = 2
+    cfg.succ_error_tol = 0.0
+
+    imcts.reset_timing_stats()
+    imcts.Regressor(x, y, cfg).fit(seed=1)
+    stats = imcts.timing_stats()
+
+    assert stats["coefficient_optimize"]["calls"] > 0
+    assert stats["bridge_to_tree"]["calls"] > 0
+    assert "lm_residual" in stats
+    assert "lm_jacobian" in stats
+    assert stats["mcts_backpropagate"]["calls"] > 0
+    assert stats["mcts_rollout"]["calls"] > 0
+    assert stats["mcts_search"]["calls"] > 0
+    assert "mcts_mutation" in stats
+    assert "mcts_crossover" in stats
+    assert stats["normal_equation_accumulate"]["calls"] > 0
+    assert stats["optimizer_lm_minimize"]["calls"] > 0
+    assert stats["interpreter_evaluate"]["calls"] > 0
+    assert "interpreter_evaluate_residual" in stats
+    assert "interpreter_evaluate_with_jacobian" in stats
+
+
 def main():
+    test_openmp_info()
+    test_timing_stats()
+    test_timing_stats_record_fit_work()
     test_basic()
     test_pretty_expression_fallback_or_simplify()
 
