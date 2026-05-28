@@ -12,8 +12,8 @@ search:
   ops:
   max_depth: 6
   max_unary: 999
-  max_constants: 10
-  lm_iterations: 50
+  max_constants: 999
+  lm_iterations: 10
   K: 500
   c: 6.0
   gamma: 0.5

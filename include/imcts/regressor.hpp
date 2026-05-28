@@ -23,7 +23,7 @@ struct RegressorConfig {
     float exploration_rate = 0.2f;
     int   max_unary        = 999;
     int   max_constants    = 999;
-    int   lm_iterations    = 50;
+    int   lm_iterations    = 10;
     int   max_evals        = 2000000;
     double max_time_sec    = 0.0;
     float succ_error_tol   = 1e-6f;

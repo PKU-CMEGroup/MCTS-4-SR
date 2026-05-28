@@ -11,8 +11,8 @@ search:
   ops: ["+", "-", "*", "/", "sin", "cos", "exp", "log", "R"]
   max_depth: 6
   max_unary: 999
-  max_constants: 10
-  lm_iterations: 50
+  max_constants: 999
+  lm_iterations: 10
   K: 500
   c: 6.0
   gamma: 0.5
@@ -29,5 +29,5 @@ tuning:
   factor: 3
   max_wall_time_hours:
   parameters:
-    max_depth: [4, 6, 8]
+    max_depth: [5, 8]
     K: [250, 500]
