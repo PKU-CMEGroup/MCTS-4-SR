@@ -125,18 +125,43 @@ Run a small black-box benchmark sweep:
 python -m imcts.benchmarks --group BlackBox --cases 1-3 --runs 3
 ```
 
-Use `--workers` to control the number of parallel worker processes for independent seed runs. By default, the benchmark runner uses the physical CPU core count; pass `--workers 1` to disable parallelism.
+Use `--workers` to control the number of parallel worker processes for independent seed runs. By default, the benchmark runner uses half of the detected physical CPU cores, with a minimum of one worker. Pass `--workers 1` to disable parallelism.
 
 Black-box benchmarks expect datasets under `datasets/`. The format follows [PMLB](https://github.com/EpistasisLab/pmlb). If a `.tsv.gz` file is only a Git LFS pointer, fetch the real dataset contents before running the benchmark.
 
-Benchmark outputs are written under `benchmark_results/<group>/` by default. You can also set `output.results_dir` in YAML or pass `--results-dir` to separate different experiment configurations.
+Benchmark outputs are written under `benchmark_results/imcts/<group>/` by default. You can also set `output.results_dir` in YAML or pass `--results-dir` to separate experiment configurations; the runner will still create the `imcts/<group>/` subdirectories under that root. `--output` is the escape hatch for an exact per-group output directory.
+
+CSV rows use the same single-algorithm shape as OpenSymRegArena: `algorithm` is always `imcts`, search settings are stored in `algorithm_params`, tuning-selected settings are stored in `tuned_params`, and `tuning_time_sec` / `tuning_evaluations` record optional tuning cost.
+
+Enable dataset tuning with `--tune` or with a YAML `tuning` section. Tuning is skipped for expression benchmarks and for configs without `tuning.parameters`.
+
+```yaml
+tuning:
+  enabled: true
+  cv_folds: 5
+  factor: 3
+  max_wall_time_hours: 6.0
+  parameters:
+    max_depth: [4, 6, 8]
+    K: [250, 500]
+```
+
+`runtime.max_wall_time_hours` and `--max-wall-time-hours` are per-fit limits passed to `imcts.RegressorConfig.max_time_sec`; they are not a total group wall-clock limit. During tuning, `tuning.max_wall_time_hours` is a separate total tuning budget, and each tuning fit receives the smaller remaining tuning budget and per-fit runtime limit.
 
 Summarize benchmark outputs across groups or cases:
 
 ```bash
 python -m imcts.benchmarks.report
 python -m imcts.benchmarks.report nguyen --level case
-python -m imcts.benchmarks.report --result_dir path/to/results
+python -m imcts.benchmarks.report --results-dir path/to/results
+```
+
+Convenience bash scripts are available under `scripts/sh/`:
+
+```bash
+bash scripts/sh/run_benchmark_groups.sh
+bash scripts/sh/run_ablation.sh -- --runs 3 --workers 4
+bash scripts/sh/run_ucb_extreme_sensitivity.sh -- --runs 3 --workers 4
 ```
 
 ## Testing
