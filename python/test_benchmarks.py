@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -21,6 +22,7 @@ if str(LOCAL_BENCHMARKS) not in benchmarks_pkg.__path__:
     benchmarks_pkg.__path__.insert(0, str(LOCAL_BENCHMARKS))
 
 from imcts.benchmarks import executor, runner
+from imcts import pretty
 from imcts.benchmarks.config import build_settings, load_yaml_resource
 from imcts.benchmarks.registry import load_bundled_registry
 from imcts.benchmarks.sources import DatasetSource, ExpressionSource, PreparedCaseData, inspect_case_dataset
@@ -42,6 +44,7 @@ def make_args(**overrides) -> argparse.Namespace:
         "output": None,
         "split_by_case": False,
         "list": False,
+        "tune": None,
         "ops": None,
         "max_evals": None,
         "max_depth": None,
@@ -60,6 +63,30 @@ def make_args(**overrides) -> argparse.Namespace:
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
+
+
+def test_simplify_with_complexity_uses_srbench_node_counting():
+    simplified, complexity = pretty.simplify_with_complexity("x0 + 0.00001*x1 + 1.23456")
+
+    assert simplified == "x0 + 1.24"
+    assert complexity == 3.0
+
+
+def test_simplify_with_complexity_runs_in_process(monkeypatch: pytest.MonkeyPatch):
+    called = False
+
+    def fake_run(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("simplification should not spawn subprocesses")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    simplified, complexity = pretty.simplify_with_complexity("x0 + x1", timeout_sec=1.0)
+
+    assert not called
+    assert simplified == "x0 + x1"
+    assert complexity == 3.0
 
 
 def test_registry_group_metadata_and_cases():
@@ -97,6 +124,51 @@ def test_build_settings_prefers_cli_over_yaml_and_defaults():
     assert settings.test_ratio == 0.4
 
 
+def test_load_yaml_resource_deep_merges_user_config_with_bundled_default(tmp_path: Path):
+    registry = load_bundled_registry()
+    group = registry.get_group("Nguyen")
+    config_path = tmp_path / "nguyen_override.yaml"
+    config_path.write_text(
+        "search:\n"
+        "  max_depth: 3\n",
+        encoding="utf-8",
+    )
+
+    raw_config = load_yaml_resource(config_path, group.default_config_name)
+    settings = build_settings(make_args(), group, raw_config)
+
+    assert settings.runs == 100
+    assert settings.max_depth == 3
+    assert settings.K == 500
+
+
+def test_build_settings_parses_tuning_section_and_cli_override():
+    registry = load_bundled_registry()
+    group = registry.get_group("BlackBox")
+    raw_config = {
+        "tuning": {
+            "enabled": True,
+            "cv_folds": 3,
+            "factor": 2,
+            "max_wall_time_hours": 1.5,
+            "parameters": {
+                "max_depth": [4, 6],
+                "K": [250, 500],
+            },
+        },
+    }
+
+    enabled = build_settings(make_args(), group, raw_config)
+    disabled = build_settings(make_args(tune=False), group, raw_config)
+
+    assert enabled.tuning.enabled
+    assert enabled.tuning.cv_folds == 3
+    assert enabled.tuning.factor == 2
+    assert enabled.tuning.max_wall_time_hours == 1.5
+    assert enabled.tuning.parameters == {"max_depth": [4, 6], "K": [250, 500]}
+    assert not disabled.tuning.enabled
+
+
 def test_make_regressor_config_sets_per_run_wall_time_seconds(monkeypatch: pytest.MonkeyPatch):
     class FakeConfig:
         pass
@@ -115,6 +187,25 @@ def test_make_regressor_config_sets_per_run_wall_time_seconds(monkeypatch: pytes
     cfg = executor.make_regressor_config(settings)
 
     assert cfg.max_time_sec == 9000.0
+
+
+def test_iter_tuning_candidates_expands_search_parameter_grid():
+    registry = load_bundled_registry()
+    group = registry.get_group("BlackBox")
+    settings = build_settings(
+        make_args(),
+        group,
+        {
+            "search": {"max_depth": 2, "K": 10, "max_evals": 11},
+            "tuning": {"parameters": {"max_depth": [2, 3], "K": [10, 20]}},
+        },
+    )
+
+    candidates = executor.iter_tuning_candidates(settings)
+
+    assert [candidate.max_depth for candidate in candidates] == [2, 2, 3, 3]
+    assert [candidate.K for candidate in candidates] == [10, 20, 10, 20]
+    assert all(candidate.max_evals == 11 for candidate in candidates)
 
 
 def test_expression_source_prepares_symbolic_case():
@@ -296,10 +387,151 @@ def test_run_case_subsamples_large_training_split(monkeypatch: pytest.MonkeyPatc
     assert result.samples_train == 10_000
     assert result.samples_test == 3_334
     assert result.samples_total == n_samples
+    assert result.algorithm == "imcts"
+    assert result.algorithm_params["max_depth"] == settings.max_depth
+    assert result.tuned_params == result.algorithm_params
+
+
+def test_run_case_tunes_blackbox_candidates_before_final_fit(monkeypatch: pytest.MonkeyPatch):
+    calls: list[dict] = []
+
+    class FakeConfig:
+        pass
+
+    class FakeResult:
+        def __init__(self, cfg):
+            self.best_coefficients = []
+            self.expression = "x0" if cfg.max_depth == 3 else "0.0"
+            self.best_reward = 0.75
+            self.n_evals = cfg.max_evals
+
+    class FakeRegressor:
+        def __init__(self, x, y, cfg):
+            calls.append(
+                {
+                    "x_shape": x.shape,
+                    "cfg": cfg,
+                }
+            )
+            self.cfg = cfg
+
+        def fit(self, seed):
+            return FakeResult(self.cfg)
+
+    fake_imcts = SimpleNamespace(RegressorConfig=FakeConfig, Regressor=FakeRegressor)
+    monkeypatch.setattr("imcts.benchmarks.executor.require_imcts", lambda: fake_imcts)
+
+    registry = load_bundled_registry()
+    group = registry.get_group("BlackBox")
+    settings = build_settings(
+        make_args(),
+        group,
+        {
+            "data": {"test_ratio": 0.25},
+            "runtime": {"max_wall_time_hours": 42.0},
+            "search": {"max_depth": 2, "K": 10, "max_evals": 11},
+            "tuning": {
+                "enabled": True,
+                "cv_folds": 2,
+                "factor": 2,
+                "max_wall_time_hours": 6.0,
+                "parameters": {"max_depth": [2, 3], "K": [10, 20]},
+            },
+        },
+    )
+    X_total = np.arange(16, dtype=np.float64).reshape(-1, 1)
+    prepared = PreparedCaseData(
+        X_total=X_total,
+        y_total=X_total[:, 0],
+        feature_names=["x0"],
+        target_expression="",
+        source_type="dataset",
+    )
+
+    result = executor.run_case(
+        "BlackBox",
+        {"id": 1, "name": "toy"},
+        run_index=0,
+        seed=42,
+        settings=settings,
+        prepared=prepared,
+    )
+
+    assert len(calls) == 13
+    assert {call["x_shape"][1] for call in calls[:8]} == {2}
+    assert {call["x_shape"][1] for call in calls[8:12]} == {4}
+    assert calls[-1]["x_shape"] == (1, 12)
+    assert all(call["cfg"].max_time_sec <= 21600.0 for call in calls[:-1])
+    assert calls[-1]["cfg"].max_time_sec == 151200.0
+    assert result.tuned_params["max_depth"] == 3
+    assert result.tuned_params["K"] in {10, 20}
+    assert result.test_r2 == 1.0
+    assert result.evaluations == 13 * 11
+
+
+def test_run_case_does_not_tune_expression_benchmarks(monkeypatch: pytest.MonkeyPatch):
+    calls: list[int] = []
+
+    class FakeConfig:
+        pass
+
+    class FakeResult:
+        best_coefficients = []
+        expression = "x0"
+        best_reward = 0.75
+        n_evals = 7
+
+    class FakeRegressor:
+        def __init__(self, x, y, cfg):
+            calls.append(cfg.max_depth)
+
+        def fit(self, seed):
+            return FakeResult()
+
+    fake_imcts = SimpleNamespace(RegressorConfig=FakeConfig, Regressor=FakeRegressor)
+    monkeypatch.setattr("imcts.benchmarks.executor.require_imcts", lambda: fake_imcts)
+
+    registry = load_bundled_registry()
+    group = registry.get_group("Nguyen")
+    settings = build_settings(
+        make_args(),
+        group,
+        {
+            "data": {"test_ratio": 0.25},
+            "search": {"max_depth": 2, "max_evals": 7},
+            "tuning": {
+                "enabled": True,
+                "cv_folds": 2,
+                "factor": 2,
+                "parameters": {"max_depth": [2, 3]},
+            },
+        },
+    )
+    X_total = np.arange(8, dtype=np.float64).reshape(-1, 1)
+    prepared = PreparedCaseData(
+        X_total=X_total,
+        y_total=X_total[:, 0],
+        feature_names=["x0"],
+        target_expression="x0",
+        source_type="expression",
+    )
+
+    result = executor.run_case(
+        "Nguyen",
+        {"id": 1, "name": "Nguyen-1"},
+        run_index=0,
+        seed=42,
+        settings=settings,
+        prepared=prepared,
+    )
+
+    assert calls == [2]
+    assert result.tuned_params["max_depth"] == 2
 
 
 def test_format_result_omits_training_sample_count():
     result = executor.BenchmarkResult(
+        algorithm="imcts",
         group="BlackBox",
         case_id=1,
         case_name="1027_ESL",
@@ -323,12 +555,10 @@ def test_format_result_omits_training_sample_count():
         materialized_expression="x0",
         simplified_expression="x0",
         coefficients=[],
-        ops=["+", "-"],
-        max_depth=4,
-        max_unary=2,
-        max_constants=1,
-        max_evals=500_000,
-        lm_iterations=10,
+        tuning_time_sec=0.0,
+        tuning_evaluations=0,
+        algorithm_params={"max_depth": 4},
+        tuned_params={"max_depth": 4},
         test_ratio=0.25,
     )
 
@@ -337,6 +567,7 @@ def test_format_result_omits_training_sample_count():
 
 def make_benchmark_result(case_name: str, run: int) -> executor.BenchmarkResult:
     return executor.BenchmarkResult(
+        algorithm="imcts",
         group="BlackBox",
         case_id=1,
         case_name=case_name,
@@ -360,12 +591,10 @@ def make_benchmark_result(case_name: str, run: int) -> executor.BenchmarkResult:
         materialized_expression="x0",
         simplified_expression="x0",
         coefficients=[],
-        ops=["+"],
-        max_depth=2,
-        max_unary=1,
-        max_constants=1,
-        max_evals=10,
-        lm_iterations=1,
+        tuning_time_sec=0.0,
+        tuning_evaluations=0,
+        algorithm_params={"max_depth": 2},
+        tuned_params={"max_depth": 2},
         test_ratio=0.25,
     )
 
@@ -456,6 +685,19 @@ def test_parallel_runner_interleaves_cases_by_run(monkeypatch: pytest.MonkeyPatc
         ("case_a", 1),
         ("case_b", 1),
     ]
+
+
+def test_split_output_dir_nests_imcts_before_group(tmp_path: Path):
+    from imcts.benchmarks.writer import split_output_dir
+
+    output = split_output_dir(
+        group="Nguyen",
+        explicit_output=None,
+        results_dir=Path("benchmark_results"),
+        workspace_root=tmp_path,
+    )
+
+    assert output == tmp_path / "benchmark_results" / "imcts" / "nguyen"
 
 
 def test_sequential_runner_does_not_apply_group_wall_time_limit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -550,21 +792,21 @@ def test_runner_smoke_for_nguyen_and_blackbox(monkeypatch: pytest.MonkeyPatch, t
     fake_imcts = SimpleNamespace(RegressorConfig=FakeConfig, Regressor=FakeRegressor)
     monkeypatch.setattr("imcts.benchmarks.executor.require_imcts", lambda: fake_imcts)
 
-    nguyen_output_dir = tmp_path / "nguyen"
-    assert runner.main(["--group", "Nguyen", "--cases", "1", "--runs", "1", "--workers", "1", "--output", str(nguyen_output_dir)], workspace_root=tmp_path) == 0
+    nguyen_results_dir = tmp_path / "nguyen-results"
+    assert runner.main(["--group", "Nguyen", "--cases", "1", "--runs", "1", "--workers", "1", "--results-dir", str(nguyen_results_dir)], workspace_root=tmp_path) == 0
 
     dataset_name = load_bundled_registry().get_cases("BlackBox")[0]["name"]
     dataset_file = tmp_path / "datasets" / dataset_name / f"{dataset_name}.csv"
     dataset_file.parent.mkdir(parents=True)
     dataset_file.write_text("x0,target\n1,1\n2,2\n3,3\n4,4\n", encoding="utf-8")
 
-    blackbox_output_dir = tmp_path / "blackbox"
-    assert runner.main(["--group", "BlackBox", "--cases", "1", "--runs", "1", "--workers", "1", "--output", str(blackbox_output_dir)], workspace_root=tmp_path) == 0
+    blackbox_results_dir = tmp_path / "blackbox-results"
+    assert runner.main(["--group", "BlackBox", "--cases", "1", "--runs", "1", "--workers", "1", "--results-dir", str(blackbox_results_dir)], workspace_root=tmp_path) == 0
 
     nguyen_case = load_bundled_registry().get_cases("Nguyen")[0]
     blackbox_case = load_bundled_registry().get_cases("BlackBox")[0]
-    nguyen_output = case_output_path(nguyen_output_dir, "Nguyen", nguyen_case)
-    blackbox_output = case_output_path(blackbox_output_dir, "BlackBox", blackbox_case)
+    nguyen_output = case_output_path(nguyen_results_dir / "imcts" / "nguyen", "Nguyen", nguyen_case)
+    blackbox_output = case_output_path(blackbox_results_dir / "imcts" / "blackbox", "BlackBox", blackbox_case)
     assert nguyen_output.exists()
     assert blackbox_output.exists()
 
@@ -577,5 +819,28 @@ def test_runner_smoke_for_nguyen_and_blackbox(monkeypatch: pytest.MonkeyPatch, t
     assert len(blackbox_rows) == 1
     assert nguyen_rows[0]["case_name"] == "Nguyen-1"
     assert blackbox_rows[0]["case_name"] == dataset_name
+    assert nguyen_rows[0]["algorithm"] == "imcts"
+    assert "algorithm_params" in nguyen_rows[0]
+    assert "tuned_params" in nguyen_rows[0]
+    assert "tuning_time_sec" in nguyen_rows[0]
     assert "materialized_expression" in nguyen_rows[0]
     assert "materialized_expression" in blackbox_rows[0]
+
+
+def test_report_loads_algorithm_group_result_layout(tmp_path: Path):
+    from imcts.benchmarks.report import load_rows, summarize_by_group
+
+    csv_dir = tmp_path / "results" / "imcts" / "nguyen"
+    csv_dir.mkdir(parents=True)
+    (csv_dir / "nguyen_001_nguyen-1.csv").write_text(
+        "algorithm,group,case_id,case_name,time_sec,success,evaluations,test_r2\n"
+        "imcts,Nguyen,1,Nguyen-1,1.5,true,7,1.0\n",
+        encoding="utf-8",
+    )
+
+    rows = load_rows(tmp_path / "results", ["nguyen"])
+    summaries = summarize_by_group(rows)
+
+    assert rows[0]["algorithm"] == "imcts"
+    assert summaries[0].algorithm == "imcts"
+    assert summaries[0].group == "Nguyen"

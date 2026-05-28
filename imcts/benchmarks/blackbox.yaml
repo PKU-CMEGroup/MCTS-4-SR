@@ -23,3 +23,11 @@ search:
   max_evals: 500000
 runtime:
   max_wall_time_hours: 48.0
+tuning:
+  enabled: false
+  cv_folds: 5
+  factor: 3
+  max_wall_time_hours:
+  parameters:
+    max_depth: [4, 6, 8]
+    K: [250, 500]

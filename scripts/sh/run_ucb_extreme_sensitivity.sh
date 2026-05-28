@@ -21,11 +21,12 @@ for config in imcts/benchmarks/experiments/ucb_extreme/model_*.yaml; do
   model="${config##*_}"
   model="${model%.yaml}"
   model="${model^^}"
+  result_root="benchmark_results/ucb_extreme/model_${model,,}"
 
   printf '\n=== Running UCB-extreme Model %s ===\n' "${model}"
-  python -m imcts.benchmarks --group Nguyen --config "${config}" "${benchmark_args[@]}"
+  python -m imcts.benchmarks --group Nguyen --config "${config}" --results-dir "${result_root}" "${benchmark_args[@]}"
 
   printf '\n--- Summary for Model %s ---\n' "${model}"
-  python -m imcts.benchmarks.report Nguyen --config "${config}" --level group || \
+  python -m imcts.benchmarks.report Nguyen --results-dir "${result_root}" --level group || \
     printf 'Summary skipped: no reportable CSV output found yet.\n'
 done

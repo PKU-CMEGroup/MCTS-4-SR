@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import math
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
+from itertools import product
 from typing import Any, Sequence
 
 from ..pretty import simplify_with_complexity
@@ -30,6 +32,7 @@ MAX_TRAINING_SAMPLES = 10_000
 
 @dataclass(frozen=True)
 class BenchmarkResult:
+    algorithm: str
     group: str
     case_id: int
     case_name: str
@@ -49,20 +52,19 @@ class BenchmarkResult:
     complexity: float
     evaluations: int
     time_sec: float
+    tuning_time_sec: float
+    tuning_evaluations: int
     expression: str
     materialized_expression: str
     simplified_expression: str
     coefficients: list[float]
-    ops: list[str]
-    max_depth: int
-    max_unary: int
-    max_constants: int
-    max_evals: int
-    lm_iterations: int
+    algorithm_params: dict[str, Any]
+    tuned_params: dict[str, Any]
     test_ratio: float
 
     def to_row(self) -> dict[str, Any]:
         return {
+            "algorithm": self.algorithm,
             "group": self.group,
             "case_id": self.case_id,
             "case_name": self.case_name,
@@ -82,16 +84,14 @@ class BenchmarkResult:
             "complexity": self.complexity,
             "evaluations": self.evaluations,
             "time_sec": self.time_sec,
+            "tuning_time_sec": self.tuning_time_sec,
+            "tuning_evaluations": self.tuning_evaluations,
             "expression": self.expression,
             "materialized_expression": self.materialized_expression,
             "simplified_expression": self.simplified_expression,
             "coefficients": json.dumps(self.coefficients),
-            "ops": ",".join(self.ops),
-            "max_depth": self.max_depth,
-            "max_unary": self.max_unary,
-            "max_constants": self.max_constants,
-            "max_evals": self.max_evals,
-            "lm_iterations": self.lm_iterations,
+            "algorithm_params": json.dumps(self.algorithm_params, sort_keys=True),
+            "tuned_params": json.dumps(self.tuned_params, sort_keys=True),
             "test_ratio": self.test_ratio,
         }
 
@@ -209,6 +209,63 @@ def materialize_expression(expression: str, coefficients: Sequence[float]) -> st
     return materialized
 
 
+def search_params(settings: BenchmarkSettings) -> dict[str, Any]:
+    params = asdict(settings.search)
+    params["ops"] = list(settings.ops)
+    return params
+
+
+def _with_search_params(settings: BenchmarkSettings, params: dict[str, Any]) -> BenchmarkSettings:
+    search = replace(settings.search, **params)
+    return replace(settings, search=search)
+
+
+def _with_max_wall_time(settings: BenchmarkSettings, max_wall_time_hours: float | None) -> BenchmarkSettings:
+    runtime = replace(settings.runtime, max_wall_time_hours=max_wall_time_hours)
+    return replace(settings, runtime=runtime)
+
+
+def iter_tuning_candidates(settings: BenchmarkSettings) -> list[BenchmarkSettings]:
+    grid = settings.tuning.parameters
+    if not grid:
+        return [settings]
+
+    base_params = search_params(settings)
+    keys = list(grid)
+    candidates: list[BenchmarkSettings] = []
+    for values in product(*(grid[key] for key in keys)):
+        params = dict(base_params)
+        params.update(dict(zip(keys, values)))
+        candidates.append(_with_search_params(settings, params))
+    return candidates
+
+
+@dataclass(frozen=True)
+class FitSummary:
+    raw_result: Any
+    elapsed: float
+    evaluations: int
+    expression: str
+    coefficients: list[float]
+    reward: float
+
+
+@dataclass(frozen=True)
+class TunedFit:
+    settings: BenchmarkSettings
+    summary: FitSummary
+    tuning_elapsed: float
+    tuning_evaluations: int
+
+    @property
+    def elapsed(self) -> float:
+        return self.tuning_elapsed + self.summary.elapsed
+
+    @property
+    def evaluations(self) -> int:
+        return self.tuning_evaluations + self.summary.evaluations
+
+
 def make_regressor_config(settings: BenchmarkSettings):
     """Translate benchmark search settings into ``imcts.RegressorConfig``.
 
@@ -236,6 +293,177 @@ def make_regressor_config(settings: BenchmarkSettings):
     return cfg
 
 
+def _fit_imcts(X_train, y_train, settings: BenchmarkSettings, seed: int) -> FitSummary:
+    import numpy as np
+
+    imcts = require_imcts()
+    cfg = make_regressor_config(settings)
+    model = imcts.Regressor(
+        X_train.T.astype(np.float32, copy=False),
+        y_train.astype(np.float32, copy=False),
+        cfg,
+    )
+
+    t0 = time.perf_counter()
+    result = model.fit(seed=seed)
+    elapsed = time.perf_counter() - t0
+    coefficients = [float(value) for value in getattr(result, "best_coefficients", [])]
+    return FitSummary(
+        raw_result=result,
+        elapsed=float(elapsed),
+        evaluations=int(getattr(result, "n_evals", 0)),
+        expression=str(getattr(result, "expression", "")),
+        coefficients=coefficients,
+        reward=float(getattr(result, "best_reward", float("nan"))),
+    )
+
+
+def _score_fit_on_validation(summary: FitSummary, X_valid, y_valid) -> float:
+    materialized = materialize_expression(summary.expression, summary.coefficients)
+    y_pred = evaluate_expression(materialized, X_valid)
+    score = regression_r2(y_valid, y_pred)
+    if not math.isfinite(score):
+        return float("-inf")
+    return float(score)
+
+
+def _kfold_indices(n_samples: int, n_splits: int, seed: int):
+    import numpy as np
+
+    n_splits = min(n_splits, n_samples)
+    if n_splits < 2:
+        raise ValueError("Need at least two samples for cross-validation.")
+
+    indices = np.random.default_rng(seed).permutation(n_samples)
+    fold_sizes = np.full(n_splits, n_samples // n_splits, dtype=int)
+    fold_sizes[: n_samples % n_splits] += 1
+
+    current = 0
+    for fold_size in fold_sizes:
+        start, stop = current, current + int(fold_size)
+        valid_idx = indices[start:stop]
+        train_idx = np.concatenate((indices[:start], indices[stop:]))
+        current = stop
+        yield train_idx, valid_idx
+
+
+def _halving_resources(n_samples: int, n_candidates: int, cv_folds: int, factor: int) -> list[int]:
+    if n_samples < 2:
+        raise ValueError("Need at least two training samples for tuning.")
+    if n_candidates <= 1:
+        return [n_samples]
+
+    n_iterations = 1 + int(math.floor(math.log(n_candidates, factor)))
+    min_resources = max(cv_folds * 2, n_samples // (factor ** (n_iterations - 1)))
+    while n_iterations > 1 and min_resources * (factor ** (n_iterations - 1)) > n_samples:
+        n_iterations -= 1
+
+    resources = [min(n_samples, min_resources * (factor ** iteration)) for iteration in range(n_iterations)]
+    unique_resources: list[int] = []
+    for resource in resources:
+        resource = max(2, int(resource))
+        if not unique_resources or resource > unique_resources[-1]:
+            unique_resources.append(resource)
+    return unique_resources
+
+
+def _select_resource_subset(X_train, y_train, resource: int, seed: int):
+    import numpy as np
+
+    if resource >= X_train.shape[0]:
+        return X_train, y_train
+    indices = np.random.default_rng(seed).permutation(X_train.shape[0])[:resource]
+    return X_train[indices], y_train[indices]
+
+
+def _run_halving_tuning(
+    X_train,
+    y_train,
+    settings: BenchmarkSettings,
+    seed: int,
+) -> tuple[BenchmarkSettings, float, int]:
+    candidates = iter_tuning_candidates(settings)
+    resources = _halving_resources(
+        n_samples=int(X_train.shape[0]),
+        n_candidates=len(candidates),
+        cv_folds=settings.tuning.cv_folds,
+        factor=settings.tuning.factor,
+    )
+    tuning_elapsed = 0.0
+    tuning_evaluations = 0
+    tuning_budget_sec = None
+    if settings.tuning.max_wall_time_hours is not None:
+        tuning_budget_sec = max(0.0, float(settings.tuning.max_wall_time_hours) * 3600.0)
+
+    for iteration, resource in enumerate(resources):
+        X_resource, y_resource = _select_resource_subset(X_train, y_train, resource, seed + iteration)
+        scored_candidates: list[tuple[float, int, BenchmarkSettings]] = []
+        for candidate_index, candidate_settings in enumerate(candidates):
+            fold_scores: list[float] = []
+            for fold_index, (train_idx, valid_idx) in enumerate(
+                _kfold_indices(
+                    int(X_resource.shape[0]),
+                    settings.tuning.cv_folds,
+                    seed + iteration * 10_000 + candidate_index * 100,
+                )
+            ):
+                fit_settings = candidate_settings
+                if tuning_budget_sec is not None:
+                    remaining_budget_sec = tuning_budget_sec - tuning_elapsed
+                    if remaining_budget_sec <= 0.0:
+                        break
+                    current_limit = settings.max_wall_time_hours
+                    current_limit_sec = None if current_limit is None else max(0.0, float(current_limit) * 3600.0)
+                    fit_limit_sec = remaining_budget_sec if current_limit_sec is None else min(remaining_budget_sec, current_limit_sec)
+                    fit_settings = _with_max_wall_time(candidate_settings, fit_limit_sec / 3600.0)
+
+                summary = _fit_imcts(
+                    X_resource[train_idx],
+                    y_resource[train_idx],
+                    fit_settings,
+                    seed + iteration * 10_000 + candidate_index * 100 + fold_index,
+                )
+                tuning_elapsed += summary.elapsed
+                tuning_evaluations += summary.evaluations
+                fold_scores.append(_score_fit_on_validation(summary, X_resource[valid_idx], y_resource[valid_idx]))
+
+            mean_score = float("-inf")
+            finite_scores = [score for score in fold_scores if math.isfinite(score)]
+            if finite_scores:
+                mean_score = float(sum(finite_scores) / len(finite_scores))
+            scored_candidates.append((mean_score, candidate_index, candidate_settings))
+            if tuning_budget_sec is not None and tuning_elapsed >= tuning_budget_sec:
+                break
+
+        if not scored_candidates:
+            break
+
+        scored_candidates.sort(key=lambda item: (item[0], -item[1]), reverse=True)
+        keep = max(1, len(scored_candidates) // settings.tuning.factor)
+        candidates = [candidate for _, _, candidate in scored_candidates[:keep]]
+        if tuning_budget_sec is not None and tuning_elapsed >= tuning_budget_sec:
+            break
+        if len(candidates) == 1:
+            break
+
+    return candidates[0], tuning_elapsed, tuning_evaluations
+
+
+def fit_with_optional_tuning(X_train, y_train, settings: BenchmarkSettings, seed: int) -> TunedFit:
+    if settings.source_type != "dataset" or not settings.tuning.enabled or not settings.tuning.parameters:
+        summary = _fit_imcts(X_train, y_train, settings, seed)
+        return TunedFit(settings=settings, summary=summary, tuning_elapsed=0.0, tuning_evaluations=0)
+
+    tuned_settings, tuning_elapsed, tuning_evaluations = _run_halving_tuning(X_train, y_train, settings, seed)
+    final_summary = _fit_imcts(X_train, y_train, tuned_settings, seed)
+    return TunedFit(
+        settings=tuned_settings,
+        summary=final_summary,
+        tuning_elapsed=tuning_elapsed,
+        tuning_evaluations=tuning_evaluations,
+    )
+
+
 def run_case(
     group_name: str,
     case: dict[str, Any],
@@ -250,31 +478,22 @@ def run_case(
     seeded train/test split here so repeated runs on the same case can differ
     only by their benchmark seed.
     """
-    import numpy as np
-
-    imcts = require_imcts()
     X_train, X_test, y_train, y_test = split_train_test(prepared.X_total, prepared.y_total, settings.test_ratio, seed)
     X_train, y_train = subsample_training_data(X_train, y_train, seed=seed)
-    cfg = make_regressor_config(settings)
-    model = imcts.Regressor(
-        X_train.T.astype(np.float32, copy=False),
-        y_train.astype(np.float32, copy=False),
-        cfg,
-    )
+    fitted = fit_with_optional_tuning(X_train, y_train, settings, seed)
+    fit_result = fitted.summary
 
-    t0 = time.perf_counter()
-    result = model.fit(seed=seed)
-    elapsed = time.perf_counter() - t0
-
-    coefficients = [float(value) for value in result.best_coefficients]
-    materialized = materialize_expression(result.expression, coefficients)
+    coefficients = list(fit_result.coefficients)
+    materialized = materialize_expression(fit_result.expression, coefficients)
     y_pred_train = evaluate_expression(materialized, X_train)
     y_pred_test = evaluate_expression(materialized, X_test)
     train_r2 = regression_r2(y_train, y_pred_train)
     test_r2 = regression_r2(y_test, y_pred_test)
-    simplified_expression, complexity = simplify_with_complexity(materialized, precision=4, threshold=1e-4, coefficient_threshold=1e-5)
+    simplified_expression, complexity = simplify_with_complexity(materialized)
+    reward = fit_result.reward if math.isfinite(fit_result.reward) else train_r2
 
     return BenchmarkResult(
+        algorithm="imcts",
         group=group_name,
         case_id=int(case["id"]),
         case_name=case["name"],
@@ -287,22 +506,20 @@ def run_case(
         variables=int(prepared.X_total.shape[1]),
         feature_names=list(prepared.feature_names),
         target_expression=prepared.target_expression,
-        reward=float(result.best_reward),
-        success=bool(result.best_reward >= 1.0 - settings.succ_error_tol),
+        reward=float(reward),
+        success=bool(reward >= 1.0 - fitted.settings.succ_error_tol),
         train_r2=float(train_r2),
         test_r2=float(test_r2),
         complexity=complexity,
-        evaluations=int(result.n_evals),
-        time_sec=float(elapsed),
-        expression=result.expression,
+        evaluations=int(fitted.evaluations),
+        time_sec=float(fitted.elapsed),
+        tuning_time_sec=float(fitted.tuning_elapsed),
+        tuning_evaluations=int(fitted.tuning_evaluations),
+        expression=fit_result.expression,
         materialized_expression=materialized,
         simplified_expression=simplified_expression,
         coefficients=coefficients,
-        ops=list(cfg.ops),
-        max_depth=settings.max_depth,
-        max_unary=settings.max_unary,
-        max_constants=settings.max_constants,
-        max_evals=settings.max_evals,
-        lm_iterations=settings.lm_iterations,
+        algorithm_params=search_params(settings),
+        tuned_params=search_params(fitted.settings),
         test_ratio=float(settings.test_ratio),
     )

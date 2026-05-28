@@ -60,6 +60,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--mutation-rate", type=float, default=None)
     parser.add_argument("--exploration-rate", type=float, default=None)
     parser.add_argument("--succ-error-tol", type=float, default=None)
+    tuning_group = parser.add_mutually_exclusive_group()
+    tuning_group.add_argument("--tune", dest="tune", action="store_true", default=None, help="Enable optional search-parameter tuning for dataset benchmarks.")
+    tuning_group.add_argument("--no-tune", dest="tune", action="store_false", help="Disable optional search-parameter tuning.")
     parser.add_argument("--max-wall-time-hours", type=float, default=None)
     parser.add_argument(
         "--workers",

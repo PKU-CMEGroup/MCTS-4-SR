@@ -25,7 +25,8 @@ def split_output_dir(
     """Resolve the per-group CSV directory.
 
     ``--output`` wins and is treated as the final directory. Otherwise
-    ``results_dir`` is a root directory and we append ``group.lower()``.
+    ``results_dir`` is a root directory and we append ``imcts/<group>`` so the
+    layout matches the single-algorithm OpenSymRegArena result structure.
     """
     if explicit_output is not None:
         if explicit_output.suffix.lower() == ".csv":
@@ -34,7 +35,7 @@ def split_output_dir(
     root_dir = results_dir if results_dir is not None else Path(DEFAULT_RESULTS_DIRNAME)
     if not root_dir.is_absolute():
         root_dir = workspace_root / root_dir
-    return root_dir / group.lower()
+    return root_dir / "imcts" / group.lower()
 
 
 def case_output_path(output_dir: Path, group: str, case: dict) -> Path:

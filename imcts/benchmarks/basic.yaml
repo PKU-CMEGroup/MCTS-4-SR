@@ -24,3 +24,9 @@ search:
   max_evals: 2000000
 runtime:
   max_wall_time_hours:
+tuning:
+  enabled: false
+  cv_folds: 5
+  factor: 3
+  max_wall_time_hours:
+  parameters:

@@ -15,6 +15,7 @@ from __future__ import annotations
 import math
 import os
 import time
+import json
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Sequence
@@ -86,7 +87,7 @@ def _format_result(result: executor.BenchmarkResult) -> str:
     test_r2_text = f"{result.test_r2:.6f}" if math.isfinite(result.test_r2) else "nan"
     complexity_text = f"{result.complexity:.0f}" if math.isfinite(result.complexity) else "nan"
     return (
-        f"{result.case_name:>18} run={result.run:<2} seed={result.seed:<5} "
+        f"{result.algorithm:>6} {result.case_name:>18} run={result.run:<2} seed={result.seed:<5} "
         f"time={result.time_sec:.3f}s reward={result.reward:.6f} "
         f"train_r2={train_r2_text} test_r2={test_r2_text} "
         f"complexity={complexity_text} evals={result.evaluations}"
@@ -189,11 +190,11 @@ def _run_sequential(
             rows.append(result)
             case_rows.append(result)
             print(_format_result(result))
-
-        if case_rows:
+            checkpoint_rows = sorted(case_rows, key=lambda row: row.run)
             case_path = case_output_path(output_dir, group_name, case)
-            write_csv(case_rows, case_path)
-            print(f"wrote {len(case_rows)} rows to {case_path}")
+            write_csv(checkpoint_rows, case_path)
+            if len(checkpoint_rows) == settings.runs:
+                print(f"wrote {len(checkpoint_rows)} rows to {case_path}")
     return rows
 
 
@@ -270,23 +271,24 @@ def main(
     output = resolve_output_path(args, settings, group_name, workspace_root)
     output.mkdir(parents=True, exist_ok=True)
 
-    num_workers = args.workers if args.workers is not None else physical_core_count()
+    default_workers = max(1, physical_core_count() // 2)
+    num_workers = args.workers if args.workers is not None else default_workers
     num_workers = max(1, num_workers)
 
     print(f"benchmark group : {group_name}")
+    print("algorithm       : imcts")
     print(f"cases           : {', '.join(case['name'] for case in selected_cases)}")
     print(f"runs per case   : {settings.runs}")
-    print(f"ops             : {','.join(settings.ops)}")
-    print(f"c               : {settings.c}")
-    print(f"gamma           : {settings.gamma}")
-    print(f"gp_rate         : {settings.gp_rate}")
-    print(f"mutation_rate   : {settings.mutation_rate}")
-    print(f"exploration_rate: {settings.exploration_rate}")
+    print(f"params          : {json.dumps(executor.search_params(settings), sort_keys=True)}")
     if settings.source_type == "expression":
         print(f"sample_multiplier: {settings.sample_multiplier}")
     print(f"test_ratio      : {settings.test_ratio}")
     if settings.source_type == "dataset":
         print(f"dataset_dir     : {resolve_dataset_dir(settings, workspace_root)}")
+        if settings.tuning.enabled:
+            budget = settings.tuning.max_wall_time_hours
+            budget_text = "unlimited" if budget is None else f"{budget}h"
+            print(f"tuning          : halving cv={settings.tuning.cv_folds} factor={settings.tuning.factor} budget={budget_text}")
     if settings.auto_added_constant:
         print(f"note            : auto-added constant op R for {group_name} because neither YAML nor CLI specified ops")
     if settings.max_wall_time_hours is not None:

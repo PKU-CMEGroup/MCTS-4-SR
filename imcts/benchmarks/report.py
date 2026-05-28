@@ -17,6 +17,7 @@ from .defaults import DEFAULT_RESULTS_DIRNAME
 
 @dataclass(frozen=True)
 class SummaryRow:
+    algorithm: str
     group: str
     case_id: int | None
     case_name: str
@@ -98,35 +99,35 @@ def median_or_nan(values: list[float]) -> float:
     return float(statistics.median(filtered))
 
 
-def iter_group_dirs(results_dir: Path, selected_groups: Sequence[str]) -> list[Path]:
-    if selected_groups:
-        return [results_dir / group.lower() for group in selected_groups]
-    return sorted(path for path in results_dir.iterdir() if path.is_dir())
+def iter_result_dirs(results_dir: Path, selected_groups: Sequence[str]) -> list[Path]:
+    selected = {group.lower() for group in selected_groups}
+    result_dirs: list[Path] = []
+    for algorithm_dir in sorted(path for path in results_dir.iterdir() if path.is_dir()):
+        for group_dir in sorted(path for path in algorithm_dir.iterdir() if path.is_dir()):
+            if selected and group_dir.name.lower() not in selected:
+                continue
+            result_dirs.append(group_dir)
+    return result_dirs
 
 
 def load_rows(results_dir: Path, selected_groups: Sequence[str]) -> list[dict[str, str]]:
     all_rows: list[dict[str, str]] = []
-    missing_groups: list[str] = []
-
     if not results_dir.exists():
         raise SystemExit(f"benchmark results directory not found: {results_dir}")
     if not results_dir.is_dir():
         raise SystemExit(f"benchmark results path is not a directory: {results_dir}")
 
-    for group_dir in iter_group_dirs(results_dir, selected_groups):
-        if not group_dir.exists():
-            missing_groups.append(group_dir.name)
-            continue
+    for group_dir in iter_result_dirs(results_dir, selected_groups):
         csv_paths = sorted(group_dir.glob("*.csv"))
         for csv_path in csv_paths:
             with csv_path.open("r", newline="", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 all_rows.extend(reader)
 
-    if missing_groups:
-        missing_text = ", ".join(missing_groups)
-        raise SystemExit(f"benchmark result groups not found under {results_dir}: {missing_text}")
     if not all_rows:
+        if selected_groups:
+            missing_text = ", ".join(selected_groups)
+            raise SystemExit(f"benchmark result groups not found under {results_dir}: {missing_text}")
         raise SystemExit(f"no benchmark CSV files found under {results_dir}")
     return all_rows
 
@@ -145,19 +146,20 @@ def resolve_results_dir(args: argparse.Namespace, workspace_root: Path) -> Path:
 
 
 def summarize_by_case(rows: Sequence[dict[str, str]]) -> list[SummaryRow]:
-    grouped: dict[tuple[str, int, str], list[dict[str, str]]] = defaultdict(list)
+    grouped: dict[tuple[str, str, int, str], list[dict[str, str]]] = defaultdict(list)
     for row in rows:
-        key = (row["group"], int(row["case_id"]), row["case_name"])
+        key = (row["algorithm"], row["group"], int(row["case_id"]), row["case_name"])
         grouped[key].append(row)
 
     summaries: list[SummaryRow] = []
-    for (group, case_id, case_name), case_rows in sorted(grouped.items()):
+    for (algorithm, group, case_id, case_name), case_rows in sorted(grouped.items()):
         times = [parse_float(row["time_sec"]) for row in case_rows]
         evals = [parse_float(row["evaluations"]) for row in case_rows]
         successes = [1.0 if parse_bool(row["success"]) else 0.0 for row in case_rows]
         test_r2_values = [parse_float(row["test_r2"]) for row in case_rows]
         summaries.append(
             SummaryRow(
+                algorithm=algorithm,
                 group=group,
                 case_id=case_id,
                 case_name=case_name,
@@ -172,18 +174,19 @@ def summarize_by_case(rows: Sequence[dict[str, str]]) -> list[SummaryRow]:
 
 
 def summarize_by_group(rows: Sequence[dict[str, str]]) -> list[SummaryRow]:
-    grouped: dict[str, list[dict[str, str]]] = defaultdict(list)
+    grouped: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
     for row in rows:
-        grouped[row["group"]].append(row)
+        grouped[(row["algorithm"], row["group"])].append(row)
 
     summaries: list[SummaryRow] = []
-    for group, group_rows in sorted(grouped.items()):
+    for (algorithm, group), group_rows in sorted(grouped.items()):
         times = [parse_float(row["time_sec"]) for row in group_rows]
         evals = [parse_float(row["evaluations"]) for row in group_rows]
         successes = [1.0 if parse_bool(row["success"]) else 0.0 for row in group_rows]
         test_r2_values = [parse_float(row["test_r2"]) for row in group_rows]
         summaries.append(
             SummaryRow(
+                algorithm=algorithm,
                 group=group,
                 case_id=None,
                 case_name=f"{len({row['case_id'] for row in group_rows})} cases",
@@ -213,9 +216,10 @@ def make_table(headers: list[str], rows: list[list[str]]) -> str:
 
 
 def print_group_table(rows: Sequence[SummaryRow]) -> None:
-    headers = ["group", "cases", "runs", "mean_time_s", "success_rate", "mean_evals", "median_test_r2"]
+    headers = ["algorithm", "group", "cases", "runs", "mean_time_s", "success_rate", "mean_evals", "median_test_r2"]
     body = [
         [
+            row.algorithm,
             row.group,
             row.case_name,
             str(row.runs),
@@ -231,9 +235,10 @@ def print_group_table(rows: Sequence[SummaryRow]) -> None:
 
 
 def print_case_table(rows: Sequence[SummaryRow]) -> None:
-    headers = ["group", "case_id", "case_name", "runs", "mean_time_s", "success_rate", "mean_evals", "median_test_r2"]
+    headers = ["algorithm", "group", "case_id", "case_name", "runs", "mean_time_s", "success_rate", "mean_evals", "median_test_r2"]
     body = [
         [
+            row.algorithm,
             row.group,
             str(row.case_id),
             row.case_name,

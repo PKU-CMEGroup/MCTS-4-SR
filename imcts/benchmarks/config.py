@@ -81,6 +81,15 @@ class RuntimeSettings:
 
 
 @dataclass(frozen=True)
+class TuningSettings:
+    enabled: bool
+    cv_folds: int
+    factor: int
+    max_wall_time_hours: float | None
+    parameters: dict[str, list[Any]]
+
+
+@dataclass(frozen=True)
 class OutputSettings:
     results_dir: Path | None
 
@@ -94,6 +103,7 @@ class BenchmarkSettings:
     data: DataSettings
     search: SearchSettings
     runtime: RuntimeSettings
+    tuning: TuningSettings
     output: OutputSettings
     auto_added_constant: bool
 
@@ -179,16 +189,17 @@ class BenchmarkSettings:
 
 
 def load_yaml_resource(path: Path | None, default_name: str) -> dict[str, Any]:
-    if path is not None:
-        return load_yaml_file(path)
-
     try:
         import yaml
     except ImportError as exc:  # pragma: no cover - dependency issue
         raise SystemExit("PyYAML is required. Reinstall with `python -m pip install -e .`.") from exc
 
     with resources.files("imcts.benchmarks").joinpath(default_name).open("r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+        default_config = yaml.safe_load(f) or {}
+
+    if path is None:
+        return default_config
+    return deep_merge_dicts(default_config, load_yaml_file(path))
 
 
 def load_yaml_file(path: Path) -> dict[str, Any]:
@@ -272,6 +283,36 @@ def optional_path(value: str | Path | None) -> Path | None:
     return Path(value)
 
 
+def parse_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    return bool(value)
+
+
+def normalize_parameter_grid(raw_grid: Any) -> dict[str, list[Any]]:
+    if raw_grid is None:
+        return {}
+    if not isinstance(raw_grid, Mapping):
+        raise SystemExit("tuning.parameters must be a mapping of parameter names to value lists.")
+
+    grid: dict[str, list[Any]] = {}
+    for key, values in raw_grid.items():
+        if isinstance(values, (str, bytes)) or not isinstance(values, (list, tuple)):
+            raise SystemExit(f"tuning.parameters value for {key!r} must be a non-empty list.")
+        if not values:
+            raise SystemExit(f"tuning.parameters value for {key!r} must not be empty.")
+        grid[str(key)] = list(values)
+    return grid
+
+
 def build_settings(
     args: argparse.Namespace,
     group: BenchmarkGroup,
@@ -333,6 +374,28 @@ def build_settings(
     runtime = RuntimeSettings(
         max_wall_time_hours=pick(args.max_wall_time_hours, nested_get(config, "runtime", "max_wall_time_hours")),
     )
+    raw_tuning = config.get("tuning", {})
+    if raw_tuning is None:
+        raw_tuning = {}
+    if not isinstance(raw_tuning, Mapping):
+        raise SystemExit("tuning section must be a mapping.")
+    tuning_enabled = parse_bool(raw_tuning.get("enabled"), default=False)
+    if getattr(args, "tune", None) is not None:
+        tuning_enabled = bool(args.tune)
+    tuning = TuningSettings(
+        enabled=tuning_enabled,
+        cv_folds=int(raw_tuning.get("cv_folds", 5)),
+        factor=int(raw_tuning.get("factor", 3)),
+        max_wall_time_hours=(
+            None if raw_tuning.get("max_wall_time_hours") is None
+            else float(raw_tuning.get("max_wall_time_hours"))
+        ),
+        parameters=normalize_parameter_grid(raw_tuning.get("parameters")),
+    )
+    if tuning.cv_folds < 2:
+        raise SystemExit("tuning.cv_folds must be at least 2.")
+    if tuning.factor < 2:
+        raise SystemExit("tuning.factor must be at least 2.")
     output = OutputSettings(
         results_dir=optional_path(
             pick(
@@ -352,6 +415,7 @@ def build_settings(
         data=data,
         search=search,
         runtime=runtime,
+        tuning=tuning,
         output=output,
         auto_added_constant=auto_added_constant,
     )
