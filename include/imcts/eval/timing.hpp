@@ -40,21 +40,31 @@ TimingSnapshot timing_stats();
 class ScopedTimer {
 public:
     explicit ScopedTimer(TimingSection section)
+#ifdef IMCTS_ENABLE_TIMING
         : section_(section)
         , start_(std::chrono::steady_clock::now())
-    {}
+#endif
+    {
+#ifndef IMCTS_ENABLE_TIMING
+        (void)section;
+#endif
+    }
 
     ~ScopedTimer()
     {
+#ifdef IMCTS_ENABLE_TIMING
         record_timing(section_, std::chrono::steady_clock::now() - start_);
+#endif
     }
 
     ScopedTimer(const ScopedTimer&) = delete;
     ScopedTimer& operator=(const ScopedTimer&) = delete;
 
 private:
+#ifdef IMCTS_ENABLE_TIMING
     TimingSection section_;
     std::chrono::steady_clock::time_point start_;
+#endif
 };
 
 } // namespace imcts

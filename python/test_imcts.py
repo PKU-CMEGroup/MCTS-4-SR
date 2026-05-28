@@ -73,7 +73,7 @@ def test_timing_stats():
         assert stats[section]["average_seconds"] == 0.0
 
 
-def test_timing_stats_record_fit_work():
+def test_timing_stats_are_disabled_by_default():
     n = 128
     x = np.linspace(-1, 1, n, dtype=np.float32).reshape(1, n)
     y = (2.0 * x[0] + 1.0).astype(np.float32)
@@ -90,26 +90,17 @@ def test_timing_stats_record_fit_work():
     imcts.Regressor(x, y, cfg).fit(seed=1)
     stats = imcts.timing_stats()
 
-    assert stats["coefficient_optimize"]["calls"] > 0
-    assert stats["bridge_to_tree"]["calls"] > 0
-    assert "lm_residual" in stats
-    assert "lm_jacobian" in stats
-    assert stats["mcts_backpropagate"]["calls"] > 0
-    assert stats["mcts_rollout"]["calls"] > 0
-    assert stats["mcts_search"]["calls"] > 0
-    assert "mcts_mutation" in stats
-    assert "mcts_crossover" in stats
-    assert stats["normal_equation_accumulate"]["calls"] > 0
-    assert stats["optimizer_lm_minimize"]["calls"] > 0
-    assert stats["interpreter_evaluate"]["calls"] > 0
-    assert "interpreter_evaluate_residual" in stats
-    assert "interpreter_evaluate_with_jacobian" in stats
+    assert stats
+    for section in stats.values():
+        assert section["calls"] == 0
+        assert section["total_seconds"] == 0.0
+        assert section["average_seconds"] == 0.0
 
 
 def main():
     test_openmp_info()
     test_timing_stats()
-    test_timing_stats_record_fit_work()
+    test_timing_stats_are_disabled_by_default()
     test_basic()
     test_pretty_expression_fallback_or_simplify()
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 try:
-    from .imcts_py import (
+    from imcts_py import (
         FitResult,
         Regressor,
         RegressorConfig,
@@ -11,8 +11,8 @@ try:
         reset_timing_stats,
         timing_stats,
     )
-except ImportError:  # pragma: no cover - developer-tree fallback
-    from imcts_py import (
+except ImportError:  # pragma: no cover - installed-wheel fallback
+    from .imcts_py import (
         FitResult,
         Regressor,
         RegressorConfig,

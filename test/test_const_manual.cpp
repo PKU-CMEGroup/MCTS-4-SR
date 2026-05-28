@@ -115,6 +115,16 @@ TEST_CASE("Coefficient optimizer accumulates small normal equations without mate
     REQUIRE(jacobian_section.calls == 0);
 }
 
+TEST_CASE("Timing counters are disabled by default") {
+    imcts::reset_timing_stats();
+    imcts::record_timing(imcts::TimingSection::MCTSSearch, std::chrono::seconds(1));
+    const auto stats = imcts::timing_stats();
+    const auto search_section = stats[static_cast<std::size_t>(imcts::TimingSection::MCTSSearch)];
+
+    REQUIRE(search_section.calls == 0);
+    REQUIRE(search_section.total_seconds == 0.0);
+}
+
 TEST_CASE("Tree structure hash ignores coefficient values") {
     auto pset = imcts::make_primitive_set({"+", "*", "R"}, 1);
     imcts::Bridge bridge(pset);

@@ -10,6 +10,7 @@ include(FetchContent)
 find_package(OpenMP)
 
 option(IMCTS_USE_SYSTEM_EIGEN "Prefer a system-installed Eigen3 before fetching a local copy" ON)
+option(IMCTS_ENABLE_TIMING "Enable internal timing counters" OFF)
 if(IMCTS_USE_SYSTEM_EIGEN)
     find_package(Eigen3 QUIET)
 endif()
@@ -77,6 +78,9 @@ target_include_directories(imcts_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 target_link_libraries(imcts_core PUBLIC Eigen3::Eigen)
+if(IMCTS_ENABLE_TIMING)
+    target_compile_definitions(imcts_core PUBLIC IMCTS_ENABLE_TIMING=1)
+endif()
 if(OpenMP_CXX_FOUND)
     target_link_libraries(imcts_core PUBLIC OpenMP::OpenMP_CXX)
 endif()
