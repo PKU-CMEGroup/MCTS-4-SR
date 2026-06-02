@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from importlib.metadata import version as _version
+
+__version__ = _version("MCTS-4-SR")
+
 try:
     from imcts_py import (
         FitResult,
