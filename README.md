@@ -20,6 +20,68 @@ The repository includes the C++ search core, the `imcts` Python package, benchma
 - Synthetic and black-box benchmark runners
 - Catch2 and Python smoke tests
 
+## Results
+
+All results below are fully reproducible using the benchmark tooling in this repository. Raw outputs (CSV logs and summary tables) are kept under [`benchmark_results/`](benchmark_results/), and all figures can be regenerated with `python -m imcts.benchmarks.plot`.
+
+### Synthetic Benchmarks
+
+iMCTS results on standard symbolic regression benchmark suites. Each run is limited to generating at most 20M expressions, with 100 runs per case.
+
+<div align="center">
+
+| Suite | Cases | Runs | Success Rate | Median R² | Avg Time (s) | Avg Complexity |
+|-------|-------|------|-------------|-----------|-------------|----------------|
+| **Nguyen** | 12 | 1200 | 93.7% | 1.000 | 1.3 | 9.8 |
+| **NguyenC** | 5 | 500 | 100.0% | 1.000 | 1.6 | 10.6 |
+| **Livermore** | 22 | 2200 | 72.5% | 1.000 | 4.9 | 12.3 |
+| **Jin** | 6 | 600 | 95.2% | 1.000 | 26.0 | 15.2 |
+
+</div>
+
+### BlackBox Benchmark Comparison (SRBench BlackBox)
+
+iMCTS is compared against all 22 SRBench BlackBox algorithms on 122 PMLB datasets. SRBench baseline results are cached in [`benchmark_results/srbench`](benchmark_results/srbench) and are available from [SRBench](https://github.com/cavalab/srbench).
+
+<div align="center"><img src="assets/blackbox_pairgrid.png" width="600"/></div>
+
+Pareto rank — accuracy vs. simplicity trade-off:
+
+<div align="center"><img src="assets/blackbox_pareto_rank.png" width="350"/></div>
+
+#### Algorithm Ranking (mean $R^2$ rank, lower is better)
+
+<div align="center">
+
+| Rank | Algorithm | Median $R^2$ | Mean $R^2$ Rank | Median Size | Mean Size Rank |
+|------|-----------|---------------|-------------------|-------------|-----------------|
+| 1 | **iMCTS** | 0.951 | **4.20** | 63.75 | 9.02 |
+| 2 | Operon | 0.934 | 5.08 | 50.0 | 9.80 |
+| 3 | SBP-GP | 0.908 | 5.98 | 720.8 | 14.39 |
+| 4 | XGB | 0.854 | 6.99 | 9641 | 19.34 |
+| 5 | FEAT | 0.895 | 7.53 | 75.3 | 9.91 |
+
+</div>
+
+Full results (all 23 algorithms) are in [`assets/imcts_blackbox_summary.csv`](assets/imcts_blackbox_summary.csv).
+
+Additional plots:
+- [Accuracy-complexity](assets/blackbox_accuracy_complexity_rank.png) — algorithm-level comparison
+- [R² distribution](assets/blackbox_r2_distribution.png) — per-algorithm boxplot
+- [R² rank](assets/blackbox_r2_rank.png) — sorted by mean rank
+
+To regenerate the comparison figures:
+
+```bash
+python -m imcts.benchmarks.plot
+```
+
+To inspect per-case results in detail:
+
+```bash
+python -m imcts.benchmarks.report
+```
+
 ## Installation
 
 ### Python package for development
@@ -42,12 +104,6 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DIMCTS_BUILD_PYTHON=ON -DBUILD_T
 cmake --build build --config Release
 ```
 
-On Windows with the Visual Studio generator, a serial build is often more stable:
-
-```bash
-cmake --build build --config Release -- /m:1
-```
-
 `cmake` builds the extension in `build/`, but it does not install the `imcts` package into your current Python environment. For normal Python imports outside the build tree, use `python -m pip install -e .`.
 
 ## Quick Start
@@ -64,21 +120,21 @@ Use the Python API directly:
 import numpy as np
 import imcts
 
-x = np.linspace(0, 2, 100, dtype=np.float32).reshape(1, 100)
-y = (np.sin(x[0]) + 0.5 * x[0]).astype(np.float32)
+x = np.random.uniform(-2, 2, size=(5, 200))
+y = ( 2.026 * np.cos(x[4]) + 0.530 * x[1] ** 2 - 0.1757 * x[0]).astype(np.float32)
 
 cfg = imcts.RegressorConfig()
 cfg.ops = ["+", "-", "*", "/", "sin", "cos", "exp", "log", "R"]
 cfg.max_depth = 6
 cfg.K = 500
-cfg.c = 4.0
+cfg.c = 6.0
 cfg.gamma = 0.5
-cfg.gp_rate = 0.2
+cfg.gp_rate = 0.5
 cfg.mutation_rate = 0.1
 cfg.exploration_rate = 0.2
 cfg.max_unary = 999
-cfg.max_constants = 4
-cfg.lm_iterations = 100
+cfg.max_constants = 999
+cfg.lm_iterations = 10
 cfg.max_evals = 100000
 cfg.succ_error_tol = 1e-6
 
@@ -87,7 +143,7 @@ result = model.fit(seed=42)
 
 print(result.best_reward)
 print(result.expression)
-print(imcts.simplify_expression(result.expression))
+print(imcts.simplify_expression(result.expression, digits=4))
 ```
 
 You can also use the default configuration from `include/imcts/regressor.hpp`:
@@ -103,6 +159,8 @@ model = imcts.Regressor(x, y)
 - `expression`
 - `best_reward`
 - `n_evals`
+
+> **Important:** If you need learnable constants in the expression, make sure to include `"R"` in `cfg.ops`. Without it, the search will only use the specified operators and cannot fit constant coefficients.
 
 ## Benchmarks
 
@@ -131,7 +189,7 @@ Black-box benchmarks expect datasets under `datasets/`. The format follows [PMLB
 
 Benchmark outputs are written under `benchmark_results/imcts/<group>/` by default. You can also set `output.results_dir` in YAML or pass `--results-dir` to separate experiment configurations; the runner will still create the `imcts/<group>/` subdirectories under that root. `--output` is the escape hatch for an exact per-group output directory.
 
-CSV rows use the same single-algorithm shape as OpenSymRegArena: `algorithm` is always `imcts`, search settings are stored in `algorithm_params`, tuning-selected settings are stored in `tuned_params`, and `tuning_time_sec` / `tuning_evaluations` record optional tuning cost.
+CSV row `algorithm` is always `imcts`, search settings are stored in `algorithm_params`, tuning-selected settings are stored in `tuned_params`, and `tuning_time_sec` / `tuning_evaluations` record optional tuning cost.
 
 Enable dataset tuning with `--tune` or with a YAML `tuning` section. Tuning is skipped for expression benchmarks and for configs without `tuning.parameters`.
 
@@ -160,8 +218,8 @@ Convenience bash scripts are available under `scripts/sh/`:
 
 ```bash
 bash scripts/sh/run_benchmark_groups.sh
-bash scripts/sh/run_ablation.sh -- --runs 3 --workers 4
-bash scripts/sh/run_ucb_extreme_sensitivity.sh -- --runs 3 --workers 4
+bash scripts/sh/run_ablation.sh
+bash scripts/sh/run_ucb_extreme_sensitivity.sh
 ```
 
 ## Testing
