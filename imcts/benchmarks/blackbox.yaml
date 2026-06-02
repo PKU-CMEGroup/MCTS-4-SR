@@ -24,10 +24,9 @@ search:
 runtime:
   max_wall_time_hours: 48.0
 tuning:
-  enabled: false
+  enabled: True
   cv_folds: 5
   factor: 3
   max_wall_time_hours:
   parameters:
     max_depth: [5, 8]
-    K: [250, 500]
