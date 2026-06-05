@@ -405,8 +405,8 @@ def save_pareto_rank(by_dataset: pd.DataFrame, fig_dir: Path) -> Path:
     ax.set_xticks([0, 5, 10, 15, 20])
     ax.set_yticks([0, 5, 10, 15, 20])
     ax.tick_params(labelsize=16)
-    ax.set_xlabel("$R^2$ Test Rank", fontsize=18)
-    ax.set_ylabel("Model Size Rank", fontsize=18)
+    ax.set_xlabel("Median $R^2$ Test Rank", fontsize=18)
+    ax.set_ylabel("Median Model Size Rank", fontsize=18)
     ax.grid(color="0.88")
     fig.tight_layout()
     path = fig_dir / "blackbox_pareto_rank.png"

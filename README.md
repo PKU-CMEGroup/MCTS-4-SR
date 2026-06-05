@@ -45,7 +45,9 @@ iMCTS is compared against all 22 SRBench BlackBox algorithms on 122 PMLB dataset
 
 <div align="center"><img src="assets/blackbox_pairgrid.png" width="600"/></div>
 
-Pareto rank — accuracy vs. simplicity trade-off:
+Pareto rank — accuracy vs. simplicity trade-off. The Pareto plot uses the
+median per-dataset rank on each axis; the summary table below reports mean
+per-dataset ranks.
 
 <div align="center"><img src="assets/blackbox_pareto_rank.png" width="350"/></div>
 
