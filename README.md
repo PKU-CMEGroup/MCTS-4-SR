@@ -26,7 +26,7 @@ All results below are fully reproducible using the benchmark tooling in this rep
 
 ### Synthetic Benchmarks
 
-iMCTS results on standard symbolic regression benchmark suites. Each run is limited to generating at most 2M expressions, with 100 runs per case.
+iMCTS results on standard symbolic regression benchmark suites. Each run is limited to generating at most 2M expressions, with 100 runs per case. Nguyen and Livermore benchmarks do not include a learnable constant operator ``R``, while NguyenC and Jin do.
 
 <div align="center">
 
@@ -41,36 +41,40 @@ iMCTS results on standard symbolic regression benchmark suites. Each run is limi
 
 ### BlackBox Benchmark Comparison (SRBench BlackBox)
 
-iMCTS is compared against all 22 SRBench BlackBox algorithms on 122 PMLB datasets. SRBench baseline results are cached in [`benchmark_results/srbench`](benchmark_results/srbench) and are available from [SRBench](https://github.com/cavalab/srbench).
+iMCTS is compared against all 21 SRBench BlackBox algorithms on 122 PMLB datasets. SRBench baseline results are cached in [`benchmark_results/srbench`](benchmark_results/srbench) and are available from [SRBench](https://github.com/cavalab/srbench). The primary metrics compared are test $R^2$, model complexity, and training time.
 
 <div align="center"><img src="assets/blackbox_pairgrid.png" width="600"/></div>
 
-Pareto rank — accuracy vs. simplicity trade-off. The Pareto plot uses the
-median per-dataset rank on each axis; the summary table below reports mean
-per-dataset ranks.
+The pairgrid is computed in two stages: for each (algorithm, dataset) pair, the
+median of a given metric is taken across the 10 different seeds; then a second
+median is taken across all 122 datasets for each algorithm. The three metrics
+shown are test $R^2$, model size, and training time, each with bootstrap 95%
+confidence intervals.
 
 <div align="center"><img src="assets/blackbox_pareto_rank.png" width="350"/></div>
 
-#### Algorithm Ranking (mean $R^2$ rank, lower is better)
+The Pareto rank plot follows the same pattern: first take the per-seed median
+for each (algorithm, dataset); then rank all 22 algorithms within each dataset
+on that metric (ties use average ranking); finally take the median of those
+per-dataset ranks across all 122 datasets, yielding the Median $R^2$ Test Rank
+and Median Model Size Rank shown on the axes, again with bootstrap 95%
+confidence intervals.
+
+#### Algorithm Ranking (median $R^2$ rank, lower is better)
 
 <div align="center">
 
-| Rank | Algorithm | Median $R^2$ | Mean $R^2$ Rank | Median Size | Mean Size Rank |
-|------|-----------|---------------|-------------------|-------------|-----------------|
-| 1 | **iMCTS** | 0.951 | **4.20** | 63.75 | 9.02 |
-| 2 | Operon | 0.934 | 5.08 | 50.0 | 9.80 |
-| 3 | SBP-GP | 0.908 | 5.98 | 720.8 | 14.39 |
-| 4 | XGB | 0.854 | 6.99 | 9641 | 19.34 |
-| 5 | FEAT | 0.895 | 7.53 | 75.3 | 9.91 |
+| Rank | Algorithm | Median $R^2$ | Median $R^2$ Rank | Median Size | Median Size Rank |
+|------|-----------|---------------|---------------------|-------------|-------------------|
+| 1 | **iMCTS** | **0.951** | **2.0** | 63.75 | **9.0** |
+| 2 | Operon | 0.934 | 2.0 | 50.0 | 10.0 |
+| 3 | SBP-GP | 0.908 | 4.0 | 720.8 | 14.0 |
+| 4 | XGB | 0.854 | 7.0 | 9641 | 20.0 |
+| 5 | FEAT | 0.895 | 6.0 | 75.3 | 11.0 |
 
 </div>
 
-Full results (all 23 algorithms) are in [`assets/imcts_blackbox_summary.csv`](assets/imcts_blackbox_summary.csv).
-
-Additional plots:
-- [Accuracy-complexity](assets/blackbox_accuracy_complexity_rank.png) — algorithm-level comparison
-- [R² distribution](assets/blackbox_r2_distribution.png) — per-algorithm boxplot
-- [R² rank](assets/blackbox_r2_rank.png) — sorted by mean rank
+Full results summary (all 22 algorithms) are in [`assets/imcts_blackbox_summary.csv`](assets/imcts_blackbox_summary.csv).
 
 To regenerate the comparison figures:
 
@@ -82,6 +86,12 @@ To inspect per-case results in detail:
 
 ```bash
 python -m imcts.benchmarks.report
+```
+
+To reproduce all results from scratch if you are interested(BlackBox takes considerable time):
+
+```bash
+bash scripts/sh/run_benchmark_groups.sh Nguyen NguyenC Livermore Jin BlackBox
 ```
 
 ## Installation
